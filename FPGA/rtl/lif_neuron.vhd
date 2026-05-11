@@ -6,10 +6,10 @@ use WORK.NEURON_PACKAGE.ALL;
 
 entity lif_neuron is
     generic ( width: positive := 16;
-              depth: positive := 2;
+              depth: positive := 3;
               int_width: natural := 8;
               frac_width: natural := 8; 
-              num_inputs : positive := 2;
+              num_inputs : positive := 3;
               step_size  : positive:= depth + 3);
     Port ( clk:       in  STD_LOGIC;
            reset:     in  STD_LOGIC;
@@ -27,7 +27,7 @@ architecture Behavioral of lif_neuron is
     signal reset_out_spike , reset_out_u , reset_acc , en_out_spike , en_out_u , en_acc : std_logic; 
 begin
 
-addr <= cnt_step(clog2(depth)-1 downto 0);
+--addr <= cnt_step(clog2(depth)-1 downto 0);
 
     datapath:   entity work.datapath_neuron port map( clk => clk,
                                                       reset => reset,
@@ -56,7 +56,7 @@ addr <= cnt_step(clog2(depth)-1 downto 0);
                                                         en_out_u => en_out_u,
                                                         en_acc => en_acc,  
                                                         src_ctrl => src_ctrl,
-                                                        cnt_step_out => cnt_step); 
+                                                        addr => addr); 
     weights:    entity work.weight_unit generic map(depth => depth,
                                                     width => width)
                                            port map(clk => clk, 

@@ -13,8 +13,8 @@ architecture Behavioral of test_neuron is
 
     -- Parámetros
     constant width      : integer := 16;
-    constant depth      : integer := 1;
-    constant num_inputs : integer := 1;
+    constant depth      : integer := 3;
+    constant num_inputs : integer := 3;
     constant int_size:    integer := 8;
     constant frac_size:   integer := 8;
 
@@ -71,21 +71,21 @@ begin
         reset <= '0';
 
 
-        spike_in <= "1"; wait for 55 ns;
-        spike_in <= "0"; wait for 60 ns;
-        spike_in <= "0"; wait for 60 ns;
-        spike_in <= "0"; wait for 60 ns;
-        spike_in <= "0"; wait for 60 ns;
-        spike_in <= "1"; wait for 60 ns;
-        spike_in <= "1"; wait for 60 ns;
-        spike_in <= "0"; wait for 60 ns;
-        spike_in <= "0"; wait for 60 ns;
-        spike_in <= "1"; wait for 60 ns;
-        spike_in <= "0"; wait for 60 ns;
-        spike_in <= "0"; wait for 60 ns;
-        spike_in <= "1"; wait for 60 ns;
-        spike_in <= "0"; wait for 60 ns;
-        spike_in <= "0"; wait for 60 ns;      
+        spike_in <= "100"; wait for 65 ns;
+        spike_in <= "011"; wait for 60 ns;
+        spike_in <= "001"; wait for 60 ns;
+        spike_in <= "000"; wait for 60 ns;
+        spike_in <= "011"; wait for 60 ns;
+        spike_in <= "100"; wait for 60 ns;
+        spike_in <= "100"; wait for 60 ns;
+        spike_in <= "011"; wait for 60 ns;
+        spike_in <= "001"; wait for 60 ns;
+        spike_in <= "100"; wait for 60 ns;
+        spike_in <= "010"; wait for 60 ns;
+        spike_in <= "001"; wait for 60 ns;
+        spike_in <= "100"; wait for 60 ns;
+        spike_in <= "011"; wait for 60 ns;
+        spike_in <= "010"; wait for 60 ns;     
         wait;
     end process;
 end Behavioral;
