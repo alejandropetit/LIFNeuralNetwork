@@ -6,6 +6,12 @@ use IEEE.MATH_REAL.ALL;
 
 
 package neuron_package is
+    type state_type is(
+        INPUT,
+        WEIGHT,
+        DECAY,
+        OUTPUT
+    );
     function clog2(n : positive) return natural;
 end neuron_package;
 

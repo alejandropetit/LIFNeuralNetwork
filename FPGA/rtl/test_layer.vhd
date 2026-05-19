@@ -1,20 +1,16 @@
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.NUMERIC_STD.ALL;
-use WORK.NEURON_PACKAGE.ALL;
 use ieee.fixed_pkg.all;
 
 
-entity test_neuron is
-end test_neuron;
+entity test_layer is
+end test_layer;
 
-architecture Behavioral of test_neuron is
-
-    -- Parámetros
+architecture Behavioral of test_layer is
+        -- Parámetros
     constant width      : integer := 16;
     constant depth      : integer := 3;
-    constant num_inputs : integer := 3;
     constant int_size:    integer := 8;
     constant frac_size:   integer := 8;
 
@@ -23,20 +19,17 @@ architecture Behavioral of test_neuron is
     signal reset     : std_logic := '1';
     signal beta      : std_logic_vector(width-1 downto 0);
     signal Vth       : std_logic_vector(width-1 downto 0);
-    signal spike_in  : std_logic_vector(num_inputs-1 downto 0);
-    signal spike_out : std_logic;
+    signal spike_in  : std_logic_vector(depth-1 downto 0);
+    signal spike_out : std_logic_vector(1 downto 0);
 
     -- Clock period
     constant clk_period : time := 10 ns;
 
 begin
-
-    -- Instancia del DUT
-    uut: entity work.lif_neuron
+    uut: entity work.lif_layer
         generic map (
             width => width,
-            depth => depth,
-            num_inputs => num_inputs
+            depth => depth
         )
         port map (
             clk       => clk,
@@ -47,7 +40,7 @@ begin
             spike_out => spike_out
         );
 
-    -- Generador de clock
+            -- Generador de clock
     clk_process : process
     begin
         while true loop
@@ -72,20 +65,22 @@ begin
 
 
         spike_in <= "100"; wait for 65 ns;
+        spike_in <= "011"; wait for 60 ns;
+        spike_in <= "001"; wait for 60 ns;
         spike_in <= "000"; wait for 60 ns;
-        spike_in <= "000"; wait for 60 ns;
-        spike_in <= "000"; wait for 60 ns;
-        spike_in <= "000"; wait for 60 ns;
-        spike_in <= "000"; wait for 60 ns;
-        spike_in <= "000"; wait for 60 ns;
-        spike_in <= "000"; wait for 60 ns;
-        spike_in <= "000"; wait for 60 ns;
-        spike_in <= "000"; wait for 60 ns;
-        spike_in <= "000"; wait for 60 ns;
-        spike_in <= "000"; wait for 60 ns;
-        spike_in <= "000"; wait for 60 ns;
-        spike_in <= "000"; wait for 60 ns;
-        spike_in <= "000"; wait for 60 ns;     
+        spike_in <= "011"; wait for 60 ns;
+        spike_in <= "100"; wait for 60 ns;
+        spike_in <= "100"; wait for 60 ns;
+        spike_in <= "011"; wait for 60 ns;
+        spike_in <= "001"; wait for 60 ns;
+        spike_in <= "100"; wait for 60 ns;
+        spike_in <= "010"; wait for 60 ns;
+        spike_in <= "001"; wait for 60 ns;
+        spike_in <= "100"; wait for 60 ns;
+        spike_in <= "011"; wait for 60 ns;
+        spike_in <= "010"; wait for 60 ns;      
         wait;
     end process;
+
+
 end Behavioral;
