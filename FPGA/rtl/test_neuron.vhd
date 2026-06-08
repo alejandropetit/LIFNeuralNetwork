@@ -36,7 +36,6 @@ begin
         generic map (
             width => width,
             depth => depth,
-            num_inputs => num_inputs
         )
         port map (
             clk       => clk,

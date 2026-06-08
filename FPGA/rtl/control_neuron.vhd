@@ -1,22 +1,20 @@
-
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
 use WORK.NEURON_PACKAGE.ALL;
 
-
 entity control_neuron is
-    generic( depth       : positive := 3;
-             step_size   : positive := depth + 3;
-             refrac      : natural := 5 );
+    generic( in_size     : positive;
+             step_size   : positive := in_size + 3;
+             refrac      : natural:=4);
     Port ( clk             :  in   STD_LOGIC;
            reset           :  in   STD_LOGIC;
-           spike_in        :  in   STD_LOGIC_VECTOR(depth-1 downto 0);
+           zero            :  in   STD_LOGIC;
            spike           :  in   STD_LOGIC;
            spike_out       :  in   STD_LOGIC;
-           first_cycle     :  in   STD_LOGIC;
+           spike_in        :  in   STD_LOGIC_VECTOR(in_size-1 downto 0);
            cnt_step        :  in   STD_LOGIC_VECTOR(clog2(step_size)-1 downto 0);
-           actual_weight   :  in   STD_LOGIC_VECTOR(depth-1 downto 0);
+           actual_weight   :  in   STD_LOGIC_VECTOR(in_size-1 downto 0);
            state           :  in   state_type;
            reset_out_spike :  out  STD_LOGIC;
            reset_out_u     :  out  STD_LOGIC;
@@ -24,23 +22,19 @@ entity control_neuron is
            en_out_spike    :  out  STD_LOGIC;
            en_out_u        :  out  STD_LOGIC;
            en_acc          :  out  STD_LOGIC;  
-           src_ctrl        :  out  STD_LOGIC;
-           zero            :  in  STD_LOGIC;
-           addr            :  out  STD_LOGIC_VECTOR(clog2(depth)-1 downto 0));
+           src_ctrl        :  out  STD_LOGIC);
 end control_neuron;
 
 architecture Behavioral2 of control_neuron is
     signal cnt_refrac : unsigned( clog2(refrac)-1 downto 0 ) := (others => '0');
     signal ctrl_state : STD_LOGIC;
     signal neuron_state : state_type;
-    --signal refractory_flag: STD_LOGIC;
 begin
 
     
     process(all) begin
         ctrl_state <= '1' when (zero='1' and unsigned(spike_in)=0) or (spike_out='0' and cnt_refrac /= 0) or (zero = '0' and unsigned(spike_in) = 0 and state = WEIGHT) else '0';
         neuron_state <= state when ctrl_state = '0' else INPUT; 
-        
     end process;
 
 --Counters   

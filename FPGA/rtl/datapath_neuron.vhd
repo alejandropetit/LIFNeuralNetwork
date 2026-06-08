@@ -1,4 +1,3 @@
-
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
@@ -7,10 +6,9 @@ use WORK.NEURON_PACKAGE.ALL;
 use IEEE.FIXED_PKG.ALL;
 
 entity datapath_neuron is
-    generic( width      : integer := 16;
-             int_width  : integer := 8;
-             frac_width : integer := 8;
-             depth      : integer := 3);
+    generic( width      : positive;
+             int_width  : natural;
+             frac_width : natural);
     Port ( clk              :  in   STD_LOGIC;
            reset            :  in   STD_LOGIC;
            reset_out_spike  :  in   STD_LOGIC;
@@ -32,10 +30,7 @@ architecture Behavioral of datapath_neuron is
     signal   u           :  SFIXED(int_width-1 downto -frac_width);
     signal   result      :  SFIXED(int_width-1 downto -frac_width);
     signal   accumulate  :  SFIXED(int_width-1 downto -frac_width);
-    signal   decay_out   :  SFIXED(int_width-1 downto -frac_width);
-    signal   src1_out    :  SFIXED(int_width-1 downto -frac_width);
 begin
-
 --
 process(all) 
     variable decay  : SFIXED(int_width-1 downto -frac_width);
@@ -48,11 +43,8 @@ begin
     result <= resize(arg => src1 + accumulate,left_index => int_width-1 ,right_index => -frac_width);
     y <= '1' when (accumulate >= to_sfixed(Vth, int_width-1, -frac_width)) else '0';
     zero <= '1' when (u = 0) else '0';
-    decay_out <= decay;
-    src1_out <= src1;
 end process;    
 --
-
 --
 process(clk) begin
     if rising_edge(clk) then
@@ -83,6 +75,6 @@ process(clk) begin
         end if;
     end if;
 end process;
-
+--
 
 end Behavioral;

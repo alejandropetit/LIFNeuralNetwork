@@ -7,15 +7,22 @@ add_files ./rtl/neuron_package.vhd
 add_files ./rtl/control_layer.vhd
 add_files ./rtl/datapath_layer.vhd
 add_files ./rtl/weight_unit.vhd
+add_files ./rtl/memory.vhd
 add_files ./rtl/control_neuron.vhd
 add_files ./rtl/datapath_neuron.vhd
 add_files ./rtl/lif_layer.vhd
 add_files ./rtl/lif_neuron.vhd
 add_files ./rtl/test_layer.vhd
 add_files ./rtl/test_neuron.vhd
+add_files ./rtl/network_datapath.vhd
+add_files ./rtl/network_control.vhd
+add_files ./rtl/lif_network.vhd
+add_files ./rtl/test_network.vhd
 
 set_property file_type {VHDL 2008} [get_files *.vhd]
 
 set_property top test_neuron [current_fileset]
+
+set_property used_in_synthesis false [get_files *test*.vhd]
 
 update_compile_order -fileset sources_1

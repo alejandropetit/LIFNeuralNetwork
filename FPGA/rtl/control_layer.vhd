@@ -1,27 +1,28 @@
-
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use WORK.NEURON_PACKAGE.ALL;
 use IEEE.NUMERIC_STD.ALL;
 
 entity control_layer is
-    generic(depth: integer:= 3;
-            step_size   : positive := depth + 3);
-    Port ( clk :     in STD_LOGIC;
-           reset :   in   STD_LOGIC;
-           spike_in: in STD_LOGIC_VECTOR(depth-1 downto 0);
-           first_cycle: out STD_LOGIC;
-           state :   out  state_type;
-           actual_weight   :  out   STD_LOGIC_VECTOR(depth-1 downto 0);
-           cnt_step: out STD_LOGIC_VECTOR( clog2(step_size)-1 downto 0 );
-           addr  :   out  STD_LOGIC_VECTOR(clog2(depth)-1 downto 0));
+    generic(in_size   : positive;
+            step_size : positive := in_size + 3);
+    Port ( clk           :  in   STD_LOGIC;
+           reset         :  in   STD_LOGIC;
+           weight_all    :  in   STD_LOGIC;
+           spike_in      :  in   STD_LOGIC_VECTOR(in_size-1 downto 0);
+           first_cycle   :  out  STD_LOGIC;
+           w_ready       :  out  STD_LOGIC; 
+           actual_weight :  out  STD_LOGIC_VECTOR(in_size-1 downto 0);
+           addr          :  out  STD_LOGIC_VECTOR(clog2(in_size)-1 downto 0);
+           cnt_step      :  out  STD_LOGIC_VECTOR( clog2(step_size)-1 downto 0 );
+           state         :  out  state_type);
 end control_layer;
 
 architecture Behavioral of control_layer is
     signal next_state: state_type;
-    signal cnt_weight : unsigned( clog2(depth)-1  downto 0 );
-    signal u_spikes, u1_spikes: STD_LOGIC_VECTOR(depth-1 downto 0);
-    signal actual_spike : STD_LOGIC_VECTOR(depth-1 downto 0);
+    signal cnt_weight : unsigned( clog2(in_size)-1  downto 0 );
+    signal u_spikes, u1_spikes: STD_LOGIC_VECTOR(in_size-1 downto 0);
+    signal actual_spike : STD_LOGIC_VECTOR(in_size-1 downto 0);
 begin
     process(all)
     begin
@@ -33,7 +34,7 @@ begin
                     next_state <= WEIGHT;
                 end if;
             when WEIGHT =>
-                if cnt_weight = depth-1 then
+                if weight_all = '1' then
                     next_state <= DECAY;
                 else
                     next_state <= WEIGHT;
@@ -66,7 +67,7 @@ begin
                 if unsigned(cnt_step) = step_size-1 then
                     cnt_step <= (others => '0');
                 else
-                    cnt_weight <= unsigned(cnt_step(clog2(depth)-1  downto 0)); 
+                    cnt_weight <= unsigned(cnt_step(clog2(in_size)-1  downto 0)); 
                     cnt_step <= std_logic_vector(unsigned(cnt_step) + 1);
                 end if;  
            end if;
@@ -76,7 +77,7 @@ begin
     
     process(all) begin 
         addr <= (others => '0');
-        for i in 0 to depth-1 loop
+        for i in 0 to in_size-1 loop
             if actual_spike(i) = '1' then
                 addr <= std_logic_vector(to_unsigned(i, addr'length));
                 exit;
@@ -101,6 +102,8 @@ begin
             actual_weight <= actual_spike; 
         end if; 
     end process;
+    
+    w_ready <= '1' when unsigned(actual_spike) = 0  and state = WEIGHT else '0';
     
 
 end Behavioral;
