@@ -10,21 +10,20 @@ end test_network;
 
 architecture Behavioral of test_network is
         -- Parámetros
-    constant width      : integer := 16;
     constant int_width  : integer := 8;
     constant frac_width : integer := 8;
     constant depth      : integer := 3;
-    constant int_size:    integer := 8;
-    constant frac_size:   integer := 8;
-    constant in_size:     integer := 3;
-    constant out_size:    integer := 1;
-    constant layer_size:  integer := 2;
-
+    constant int_size   : integer := 8;
+    constant frac_size  : integer := 8;
+    constant in_size    : integer := 3;
+    constant out_size   : integer := 1;
+    constant layer_size : integer := 2;
+    constant beta       : real    := 0.9900498337;
+    constant Vth        : real    := 100.0;
+    
     -- Señales DUT
     signal clk       : std_logic;
     signal reset     : std_logic := '1';
-    signal beta      : std_logic_vector(width-1 downto 0);
-    signal Vth       : std_logic_vector(width-1 downto 0);
     signal spike_in  : std_logic_vector(in_size-1 downto 0);
     signal spike_out : std_logic_vector(0 downto 0);
 
@@ -34,18 +33,17 @@ architecture Behavioral of test_network is
 begin
     uut: entity work.lif_network
         generic map (
-            width => width,
             int_width => int_width,
             frac_width => frac_width,
             in_size => in_size,
             out_size => out_size,
-            layer_size => layer_size
+            layer_size => layer_size,
+            beta => beta,
+            Vth => Vth
         )
         port map (
             clk       => clk,
             reset     => reset,
-            beta      => beta,
-            Vth       => Vth,
             spike_in  => spike_in,
             spike_out => spike_out
         );
@@ -65,8 +63,6 @@ begin
     stim_proc: process
     begin
         -- Inicialización
-        beta <= std_logic_vector(to_sfixed(0.9900498337, int_size-1, -frac_size));
-        Vth <= std_logic_vector(to_sfixed(100.0, int_size-1, -frac_size));
         spike_in <= (others => '0');
 
         -- Reset activo

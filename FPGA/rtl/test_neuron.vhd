@@ -35,7 +35,7 @@ begin
     uut: entity work.lif_neuron
         generic map (
             width => width,
-            depth => depth,
+            depth => depth
         )
         port map (
             clk       => clk,

@@ -6,23 +6,25 @@ use WORK.NEURON_PACKAGE.ALL;
 
 
 entity datapath_layer is
-    generic(width       : positive;
-            int_width   : natural;
-            frac_width  : natural;
-            in_size     : positive;
-            step_size   : positive := in_size + 3;
-            num_neurons : positive);    
-    Port ( clk            : in  STD_LOGIC;
-           reset          : in  STD_LOGIC;
-           first_cycle    : in  STD_LOGIC;
-           beta           : in  STD_LOGIC_VECTOR(width-1 downto 0);
-           Vth            : in  STD_LOGIC_VECTOR(width-1 downto 0);
-           spike_in       : in  STD_LOGIC_VECTOR(in_size-1 downto 0);
-           actual_weight  : in  STD_LOGIC_VECTOR(in_size-1 downto 0);
-           addr           : in  STD_LOGIC_VECTOR(clog2(in_size)-1 downto 0);
-           cnt_step       : in  STD_LOGIC_VECTOR(clog2(step_size)-1 downto 0);
-           state          : in  state_type;
-           spike_out      : out STD_LOGIC_VECTOR (num_neurons-1 downto 0));
+    generic(
+        int_width   : natural;
+        frac_width  : natural;
+        width       : positive := int_width + frac_width;
+        in_size     : positive;
+        step_size   : positive := in_size + 3;
+        num_neurons : positive;
+        beta        : real;
+        Vth         : real);    
+    Port ( 
+        clk            : in  STD_LOGIC;
+        reset          : in  STD_LOGIC;
+        first_cycle    : in  STD_LOGIC;
+        spike_in       : in  STD_LOGIC_VECTOR(in_size-1 downto 0);
+        actual_weight  : in  STD_LOGIC_VECTOR(in_size-1 downto 0);
+        addr           : in  STD_LOGIC_VECTOR(clog2(in_size)-1 downto 0);
+        cnt_step       : in  STD_LOGIC_VECTOR(clog2(step_size)-1 downto 0);
+        state          : in  state_type;
+        spike_out      : out STD_LOGIC_VECTOR (num_neurons-1 downto 0));
 end datapath_layer;
 
 architecture Behavioral of datapath_layer is
@@ -38,34 +40,42 @@ begin
         gen_group: for g in 0 to num_groups-1 generate 
             signal weight : std_logic_vector(71 downto 0);
         begin     
-            weight_inst: entity work.weight_unit generic map(width => width)
-                                                 port map(clk => clk,
-                                                          reset => reset,
-                                                          we  => '0',
-                                                          din => (others => '0'),
-                                                          addr => addr_1,
-                                                          dout => weight);   
+            -- weight instantiation
+            weight_inst: entity work.weight_unit 
+            generic map(
+                width => width)
+            port map(
+                clk => clk,
+                reset => reset,
+                we  => '0',
+                din => (others => '0'),
+                addr => addr_1,
+                dout => weight); 
+            -- weight instantiation  
             gen_neurons: for i in 0 to neurons_per_mem-1 generate 
                 constant neuron_idx : integer := g*neurons_per_mem+i;
             begin
-            
                 valid_neuron: if neuron_idx < num_neurons generate
                 begin
-                    neuron_inst: entity work.lif_neuron generic map(width => width,
-                                                                    in_size => in_size,
-                                                                    int_width => int_width,
-                                                                    frac_width => frac_width)
-                                                        port map(clk => clk,
-                                                                 reset => reset,
-                                                                 beta => beta,
-                                                                 Vth => Vth,
-                                                                 state => state,
-                                                                 actual_weight => actual_weight,
-                                                                 weight => weight(width*(i+1)-1 downto width*i),
-                                                                 spike_in => spike_in,
-                                                                 spike_out => spike_out(neuron_idx),
-                                                                 cnt_step => cnt_step);                  
-                
+                    -- neuron instatiation
+                    neuron_inst: entity work.lif_neuron
+                    generic map(
+                        width => width,
+                        int_width => int_width,
+                        frac_width => frac_width,
+                        in_size => in_size,
+                        beta => beta,
+                        Vth => Vth)
+                    port map(
+                        clk => clk,
+                        reset => reset,
+                        state => state,
+                        actual_weight => actual_weight,
+                        weight => weight(width*(i+1)-1 downto width*i),
+                        spike_in => spike_in,
+                        spike_out => spike_out(neuron_idx),
+                        cnt_step => cnt_step);                  
+                    -- neuron instantiation
                 end generate;
             end generate;
         end generate;

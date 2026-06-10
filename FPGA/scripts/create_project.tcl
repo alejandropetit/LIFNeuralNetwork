@@ -12,8 +12,6 @@ add_files ./rtl/control_neuron.vhd
 add_files ./rtl/datapath_neuron.vhd
 add_files ./rtl/lif_layer.vhd
 add_files ./rtl/lif_neuron.vhd
-add_files ./rtl/test_layer.vhd
-add_files ./rtl/test_neuron.vhd
 add_files ./rtl/network_datapath.vhd
 add_files ./rtl/network_control.vhd
 add_files ./rtl/lif_network.vhd

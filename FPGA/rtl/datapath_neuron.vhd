@@ -6,42 +6,46 @@ use WORK.NEURON_PACKAGE.ALL;
 use IEEE.FIXED_PKG.ALL;
 
 entity datapath_neuron is
-    generic( width      : positive;
-             int_width  : natural;
-             frac_width : natural);
-    Port ( clk              :  in   STD_LOGIC;
-           reset            :  in   STD_LOGIC;
-           reset_out_spike  :  in   STD_LOGIC;
-           reset_out_u      :  in   STD_LOGIC;
-           reset_acc        :  in   STD_LOGIC;
-           en_out_spike     :  in   STD_LOGIC;
-           en_out_u         :  in   STD_LOGIC;
-           en_acc           :  in   STD_LOGIC; 
-           src_ctrl         :  in   STD_LOGIC;          
-           Vth              :  in   STD_LOGIC_VECTOR(width-1 downto 0);
-           beta             :  in   STD_LOGIC_VECTOR(width-1 downto 0);
-           weight           :  in   STD_LOGIC_VECTOR(width-1 downto 0);
-           zero             :  out  STD_LOGIC;
-           y                :  out  STD_LOGIC;
-           spike_out        :  out  STD_LOGIC);
+    generic( 
+        width      : positive;
+        int_width  : natural;
+        frac_width : natural;
+        beta       : real; 
+        Vth        : real);
+    Port ( 
+        clk              :  in   STD_LOGIC;
+        reset            :  in   STD_LOGIC;
+        reset_out_spike  :  in   STD_LOGIC;
+        reset_out_u      :  in   STD_LOGIC;
+        reset_acc        :  in   STD_LOGIC;
+        en_out_spike     :  in   STD_LOGIC;
+        en_out_u         :  in   STD_LOGIC;
+        en_acc           :  in   STD_LOGIC; 
+        src_ctrl         :  in   STD_LOGIC;          
+        weight           :  in   STD_LOGIC_VECTOR(width-1 downto 0);
+        zero             :  out  STD_LOGIC;
+        y                :  out  STD_LOGIC;
+        spike_out        :  out  STD_LOGIC);
 end datapath_neuron;
 
 architecture Behavioral of datapath_neuron is
     signal   u           :  SFIXED(int_width-1 downto -frac_width);
     signal   result      :  SFIXED(int_width-1 downto -frac_width);
     signal   accumulate  :  SFIXED(int_width-1 downto -frac_width);
+    constant betasig     :  SFIXED(int_width-1 downto -frac_width) := to_sfixed(beta, int_width-1, -frac_width);
+    constant Vthsig      :  SFIXED(int_width-1 downto -frac_width) := to_sfixed(Vth, int_width-1, -frac_width);
 begin
 --
 process(all) 
     variable decay  : SFIXED(int_width-1 downto -frac_width);
-    variable   src1 : SFIXED(int_width-1 downto -frac_width);
+    variable src1   : SFIXED(int_width-1 downto -frac_width);
 begin
-    decay := resize(arg => u * to_sfixed(beta, int_width-1, -frac_width),
+    decay := resize(arg => u * betasig,
                     left_index => int_width-1,
                     right_index => -frac_width);
     src1 := decay when src_ctrl = '1' else to_sfixed(weight,int_width-1, -frac_width);
     result <= resize(arg => src1 + accumulate,left_index => int_width-1 ,right_index => -frac_width);
-    y <= '1' when (accumulate >= to_sfixed(Vth, int_width-1, -frac_width)) else '0';
+    y <= '1' when (accumulate >= Vthsig) else '0';
     zero <= '1' when (u = 0) else '0';
 end process;    
 --

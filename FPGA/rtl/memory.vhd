@@ -9,13 +9,14 @@ use xpm.vcomponents.all;
 
 
 entity memory is
-  Port (clk : in STD_LOGIC;
-        reset : in STD_LOGIC;
-        we : in STD_LOGIC_VECTOR(0 downto 0);
-        read_addr : in STD_LOGIC_VECTOR(8 downto 0);
-        write_addr : in STD_LOGIC_VECTOR(8 downto 0);
-        write_data: in STD_LOGIC_VECTOR(71 downto 0);
-        read_data : out STD_LOGIC_VECTOR(71 downto 0));
+Port (
+    clk : in STD_LOGIC;
+    reset : in STD_LOGIC;
+    we : in STD_LOGIC_VECTOR(0 downto 0);
+    read_addr : in STD_LOGIC_VECTOR(8 downto 0);
+    write_addr : in STD_LOGIC_VECTOR(8 downto 0);
+    write_data: in STD_LOGIC_VECTOR(71 downto 0);
+    read_data : out STD_LOGIC_VECTOR(71 downto 0));
 end memory;
 
 
@@ -38,6 +39,7 @@ begin
         if rising_edge(clk) then
             if reset = '1' then
                 read_data <= (others => '0');
+ 
             else
                 read_data <= RAM(to_integer(unsigned(read_addr)));
             end if;   

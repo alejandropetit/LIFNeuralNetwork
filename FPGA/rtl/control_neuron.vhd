@@ -4,25 +4,27 @@ use IEEE.NUMERIC_STD.ALL;
 use WORK.NEURON_PACKAGE.ALL;
 
 entity control_neuron is
-    generic( in_size     : positive;
-             step_size   : positive := in_size + 3;
-             refrac      : natural:=4);
-    Port ( clk             :  in   STD_LOGIC;
-           reset           :  in   STD_LOGIC;
-           zero            :  in   STD_LOGIC;
-           spike           :  in   STD_LOGIC;
-           spike_out       :  in   STD_LOGIC;
-           spike_in        :  in   STD_LOGIC_VECTOR(in_size-1 downto 0);
-           cnt_step        :  in   STD_LOGIC_VECTOR(clog2(step_size)-1 downto 0);
-           actual_weight   :  in   STD_LOGIC_VECTOR(in_size-1 downto 0);
-           state           :  in   state_type;
-           reset_out_spike :  out  STD_LOGIC;
-           reset_out_u     :  out  STD_LOGIC;
-           reset_acc       :  out  STD_LOGIC;
-           en_out_spike    :  out  STD_LOGIC;
-           en_out_u        :  out  STD_LOGIC;
-           en_acc          :  out  STD_LOGIC;  
-           src_ctrl        :  out  STD_LOGIC);
+generic( 
+    in_size     : positive;
+    step_size   : positive := in_size + 3;
+    refrac      : natural:=4);
+Port ( 
+    clk             :  in   STD_LOGIC;
+    reset           :  in   STD_LOGIC;
+    zero            :  in   STD_LOGIC;
+    spike           :  in   STD_LOGIC;
+    spike_out       :  in   STD_LOGIC;
+    spike_in        :  in   STD_LOGIC_VECTOR(in_size-1 downto 0);
+    cnt_step        :  in   STD_LOGIC_VECTOR(clog2(step_size)-1 downto 0);
+    actual_weight   :  in   STD_LOGIC_VECTOR(in_size-1 downto 0);
+    state           :  in   state_type;
+    reset_out_spike :  out  STD_LOGIC;
+    reset_out_u     :  out  STD_LOGIC;
+    reset_acc       :  out  STD_LOGIC;
+    en_out_spike    :  out  STD_LOGIC;
+    en_out_u        :  out  STD_LOGIC;
+    en_acc          :  out  STD_LOGIC;  
+    src_ctrl        :  out  STD_LOGIC);
 end control_neuron;
 
 architecture Behavioral2 of control_neuron is
