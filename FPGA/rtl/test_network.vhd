@@ -15,7 +15,7 @@ architecture Behavioral of test_network is
     constant depth      : integer := 3;
     constant int_size   : integer := 8;
     constant frac_size  : integer := 8;
-    constant in_size    : integer := 3;
+    constant in_size    : integer := 7;
     constant out_size   : integer := 1;
     constant layer_size : integer := 2;
     constant beta       : real    := 0.9900498337;
@@ -44,8 +44,8 @@ begin
         port map (
             clk       => clk,
             reset     => reset,
-            spike_in  => spike_in,
-            spike_out => spike_out
+            network_in  => spike_in,
+            network_out => spike_out
         );
 
             -- Generador de clock
@@ -70,31 +70,31 @@ begin
         reset <= '0';
 
 
-        spike_in <= "111"; wait for 65 ns;
-        spike_in <= "110"; wait for 60 ns;
-        spike_in <= "101"; wait for 60 ns;
-        spike_in <= "111"; wait for 60 ns;
-        spike_in <= "110"; wait for 60 ns;
-        spike_in <= "100"; wait for 60 ns;
-        spike_in <= "100"; wait for 60 ns;
-        spike_in <= "011"; wait for 60 ns;
-        spike_in <= "001"; wait for 60 ns;
-        spike_in <= "100"; wait for 60 ns;
-        spike_in <= "111"; wait for 60 ns;
-        spike_in <= "011"; wait for 60 ns;
-        spike_in <= "110"; wait for 60 ns;
-        spike_in <= "011"; wait for 60 ns;
-        spike_in <= "101"; wait for 60 ns;
-        spike_in <= "110"; wait for 60 ns;
-        spike_in <= "101"; wait for 60 ns;
-        spike_in <= "010"; wait for 60 ns; 
-        spike_in <= "111"; wait for 60 ns;
-        spike_in <= "010"; wait for 60 ns;
-        spike_in <= "110"; wait for 60 ns;
-        spike_in <= "101"; wait for 60 ns;
-        spike_in <= "010"; wait for 60 ns;
-        spike_in <= "111"; wait for 60 ns;
-        spike_in <= "010"; wait for 60 ns;    
+        spike_in <= "1111110"; wait for 65 ns;
+        spike_in <= "1101101"; wait for 60 ns;
+        spike_in <= "1011010"; wait for 60 ns;
+        spike_in <= "1111111"; wait for 60 ns;
+        spike_in <= "1101100"; wait for 60 ns;
+        spike_in <= "1001000"; wait for 60 ns;
+        spike_in <= "1001001"; wait for 60 ns;
+        spike_in <= "0110110"; wait for 60 ns;
+        spike_in <= "0010011"; wait for 60 ns;
+        spike_in <= "1001000"; wait for 60 ns;
+        spike_in <= "1111111"; wait for 60 ns;
+        spike_in <= "0110111"; wait for 60 ns;
+        spike_in <= "1101101"; wait for 60 ns;
+        spike_in <= "0110111"; wait for 60 ns;
+        spike_in <= "1011011"; wait for 60 ns;
+        spike_in <= "1101100"; wait for 60 ns;
+        spike_in <= "1011010"; wait for 60 ns;
+        spike_in <= "0100101"; wait for 60 ns; 
+        spike_in <= "1111111"; wait for 60 ns;
+        spike_in <= "0100100"; wait for 60 ns;
+        spike_in <= "1101100"; wait for 60 ns;
+        spike_in <= "1011010"; wait for 60 ns;
+        spike_in <= "0100100"; wait for 60 ns;
+        spike_in <= "1111111"; wait for 60 ns;
+        spike_in <= "0100101"; wait for 60 ns;    
         wait;
     end process;
 

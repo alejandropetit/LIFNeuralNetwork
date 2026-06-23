@@ -13,22 +13,23 @@ entity network_datapath is
         beta         : real;
         Vth          : real);
     Port(
-        clk:   in STD_LOGIC;
-        reset: in STD_LOGIC;
-        spike_in: in STD_LOGIC_VECTOR(in_size-1 downto 0);
-        spike_out: out STD_LOGIC_VECTOR(out_size-1 downto 0));
+        clk         : in  STD_LOGIC;
+        reset       : in  STD_LOGIC;
+        network_in  : in  STD_LOGIC_VECTOR(in_size-1 downto 0);
+        network_out : out STD_LOGIC_VECTOR(out_size-1 downto 0)
+     );
 end network_datapath;
 
 architecture Behavioral of network_datapath is
     constant max_neuron :  integer := max_array(neuron_size);
     type spike_bus_t is array (0 to layer_size) of std_logic_vector(max_neuron-1 downto 0);
     signal spike_bus : spike_bus_t := (others => (others => '0'));
-    signal weight_all: STD_LOGIC;
-    signal w_ready: STD_LOGIC_VECTOR(layer_size-1 downto 0);
+    signal weights_done: STD_LOGIC;
+    signal weight_accum_done: STD_LOGIC_VECTOR(layer_size-1 downto 0);
 begin
 
-    spike_bus(0)(neuron_size(0)-1 downto 0) <= spike_in;
-    spike_out <= spike_bus(layer_size)(neuron_size(layer_size)-1 downto 0);
+    spike_bus(0)(neuron_size(0)-1 downto 0) <= network_in;
+    network_out <= spike_bus(layer_size)(neuron_size(layer_size)-1 downto 0);
     
     layers: for i in 0 to layer_size-1 generate 
     begin
@@ -40,17 +41,17 @@ begin
             in_size => neuron_size(i),
             num_neurons => neuron_size(i+1),
             beta => beta,
-            Vth => Vth)
+            Vth => Vth,
+            mem_file => mem_files(i))
         port map(
             clk => clk,
             reset => reset,
-            weight_all => weight_all,
-            w_ready => w_ready(i),
-            spike_in => spike_bus(i)(neuron_size(i)-1 downto 0),
-            spike_out => spike_bus(i+1)(neuron_size(i+1)-1 downto 0));
-        -- layer instantiation
-    end generate;                                        
+            weights_done => weights_done,
+            weight_accum_done => weight_accum_done(i),
+            layer_in => spike_bus(i)(neuron_size(i)-1 downto 0),
+            layer_out => spike_bus(i+1)(neuron_size(i+1)-1 downto 0));
+    end generate;                                         
    
-    weight_all <= and(w_ready);
+    weights_done <= and(weight_accum_done);
                                         
 end Behavioral;
