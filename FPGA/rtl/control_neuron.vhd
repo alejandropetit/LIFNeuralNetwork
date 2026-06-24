@@ -7,6 +7,7 @@ entity control_neuron is
 generic( 
     in_size     : positive;
     step_size   : positive := in_size + 3;
+    decay_option: integer;
     refrac      : natural:=4);
 Port ( 
     clk             :  in   STD_LOGIC;
@@ -29,13 +30,19 @@ end control_neuron;
 
 architecture Behavioral2 of control_neuron is
     signal cnt_refrac : unsigned( clog2(refrac)-1 downto 0 ) := (others => '0');
-    signal ctrl_state : STD_LOGIC;
+    signal ctrl_state, ctrl_state_aux : STD_LOGIC;
     signal neuron_state : state_type;
 begin
-
+    
+    decay_gen: if decay_option = 1 generate
+        ctrl_state_aux <= '1' when (zero='1' and unsigned(spike_in)=0) or (spike_out='0' and cnt_refrac /= 0) or (zero = '0' and unsigned(spike_in) = 0 and state = WEIGHT) or (unsigned(spike_in) = 0) else '0';
+    else generate
+        ctrl_state_aux <= '1' when (zero='1' and unsigned(spike_in)=0) or (spike_out='0' and cnt_refrac /= 0) or (zero = '0' and unsigned(spike_in) = 0 and state = WEIGHT) else '0';
+    end generate;
     
     process(all) begin
-        ctrl_state <= '1' when (zero='1' and unsigned(spike_in)=0) or (spike_out='0' and cnt_refrac /= 0) or (zero = '0' and unsigned(spike_in) = 0 and state = WEIGHT) else '0';
+        --here it should be a little change when decay_option is not 0 if there's clock gating
+        ctrl_state <= ctrl_state_aux;
         neuron_state <= state when ctrl_state = '0' else INPUT; 
     end process;
 

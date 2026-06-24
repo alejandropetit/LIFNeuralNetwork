@@ -11,6 +11,7 @@ entity lif_network is
         in_size     : integer := 7;
         out_size    : integer := 1;
         layer_size  : integer := 2;
+        decay_option: integer := 0;
         beta        : real := 0.9900498337;
         Vth         : real := 100.0);
     Port (
@@ -21,7 +22,7 @@ entity lif_network is
 end lif_network;
 
 architecture Behavioral of lif_network is
-     constant neuron_size : int_array_t(0 to 2) := (7, 7, 1);
+     constant neuron_size : int_array_t(0 to 2) := (3, 3, 1);
 begin
     datapath: entity work.network_datapath 
     generic map(
@@ -31,6 +32,7 @@ begin
         out_size => out_size,
         layer_size => layer_size, 
         neuron_size => neuron_size,
+        decay_option => decay_option,
         beta => beta,
         Vth => Vth)
     port map(

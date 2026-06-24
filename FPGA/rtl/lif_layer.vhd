@@ -10,6 +10,7 @@ entity lif_layer is
         in_size     : positive;
         step_size   : positive := in_size + 3;
         num_neurons : positive;
+        decay_option: integer;
         beta        : real; 
         Vth         : real;
         mem_file    : string
@@ -38,6 +39,7 @@ generic map(
     frac_width => frac_width,
     in_size => in_size,
     num_neurons => num_neurons,
+    decay_option => decay_option,
     beta => beta,
     Vth => Vth,
     mem_file => mem_file)

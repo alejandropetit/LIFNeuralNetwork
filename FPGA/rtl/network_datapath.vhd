@@ -9,6 +9,7 @@ entity network_datapath is
         in_size      : positive;
         out_size     : positive;
         layer_size   : positive;
+        decay_option : integer;
         neuron_size  : int_array_t;
         beta         : real;
         Vth          : real);
@@ -40,6 +41,7 @@ begin
             frac_width => frac_width,
             in_size => neuron_size(i),
             num_neurons => neuron_size(i+1),
+            decay_option => decay_option,
             beta => beta,
             Vth => Vth,
             mem_file => mem_files(i))

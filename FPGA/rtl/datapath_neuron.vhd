@@ -11,7 +11,8 @@ entity datapath_neuron is
         int_width  : natural;
         frac_width : natural;
         beta       : real; 
-        Vth        : real);
+        Vth        : real;
+        decay_option : integer);
     Port ( 
         clk              :  in   STD_LOGIC;
         reset            :  in   STD_LOGIC;
@@ -23,31 +24,41 @@ entity datapath_neuron is
         en_acc           :  in   STD_LOGIC; 
         src_ctrl         :  in   STD_LOGIC;          
         weight           :  in   STD_LOGIC_VECTOR(width-1 downto 0);
+        decay_sig        :  in   SFIXED(int_width-1 downto -frac_width);
         zero             :  out  STD_LOGIC;
         y                :  out  STD_LOGIC;
         spike_out        :  out  STD_LOGIC);
 end datapath_neuron;
 
-architecture Behavioral of datapath_neuron is
+architecture option1 of datapath_neuron is
     signal   u           :  SFIXED(int_width-1 downto -frac_width);
     signal   result      :  SFIXED(int_width-1 downto -frac_width);
     signal   accumulate  :  SFIXED(int_width-1 downto -frac_width);
+    signal   decay_factor:  SFIXED(int_width-1 downto -frac_width);
     constant betasig     :  SFIXED(int_width-1 downto -frac_width) := to_sfixed(beta, int_width-1, -frac_width);
     constant Vthsig      :  SFIXED(int_width-1 downto -frac_width) := to_sfixed(Vth, int_width-1, -frac_width);
 begin
 --
+
+decay_gen: if decay_option = 1 generate
+    decay_factor <= decay_sig;
+elsif decay_option = 0 generate
+    decay_factor <= betasig;
+end generate;
+
 process(all) 
     variable decay  : SFIXED(int_width-1 downto -frac_width);
     variable src1   : SFIXED(int_width-1 downto -frac_width);
 begin
-    decay := resize(arg => u * betasig,
+    decay := resize(arg => u * decay_factor,
                     left_index => int_width-1,
                     right_index => -frac_width);
     src1 := decay when src_ctrl = '1' else to_sfixed(weight,int_width-1, -frac_width);
     result <= resize(arg => src1 + accumulate,left_index => int_width-1 ,right_index => -frac_width);
     y <= '1' when (accumulate >= Vthsig) else '0';
     zero <= '1' when (u = 0) else '0';
-end process;    
+end process; 
+
 --
 --
 process(clk) begin
@@ -81,4 +92,5 @@ process(clk) begin
 end process;
 --
 
-end Behavioral;
+end option1;
+
