@@ -75,50 +75,24 @@ begin
  
  --Deecoder  
     process(all) begin
+        control <= (others => '0');
         case neuron_state is
-            when INPUT =>
-                reset_out_spike <= '0';
-                reset_out_u <= '0';
-                reset_acc <= '1';
-                en_out_spike <= '0';
-                en_out_u <= '0';
-                en_acc <= '0';    
-                src_ctrl <= '0';           
-            when WEIGHT =>
-                reset_out_spike <= '0';
-                reset_out_u <= '0';
-                reset_acc <= '0';
-                en_out_spike <= '0';
-                en_out_u <= '0';
-                en_acc <= or actual_weight when cnt_refrac = 0 else '0';  
-                src_ctrl <= '0'; 
-            when DECAY =>
-                reset_out_spike <= '0';
-                reset_out_u <= '0';
-                reset_acc <= '0';
-                en_out_spike <= '0';
-                en_out_u <= '0';
-                en_acc <= '1';
-                src_ctrl <= '1'; 
-            when OUTPUT =>
-                if spike_out = '1' then
-                    reset_out_spike <= '1';
-                else
-                    reset_out_spike <= '0';
-                end if;
-                
-                if spike='1' then
-                    reset_out_u <= '1';
-                    reset_acc <= '1';
-                else
-                    reset_out_u <= '0';
-                    reset_acc <= '0';
-                end if;
-                en_out_spike <= '1';
-                en_out_u <= '1';
-                en_acc <= '0';  
-                src_ctrl <= '0';
-        end case;  
+            when INPUT  => control <= CTRL_INPUT;        
+            when WEIGHT => control(1) <= or current_spike when cnt_refrac = 0 else '0';
+            when DECAY  => control <= CTRL_DECAY;
+            when OUTPUT => 
+                control(6) <= '1' when spike_out = '1' else '0';
+                control(5 downto 4) <= "11" when spike = '1' else "00";
+                control(3 downto 0) <= "1100"; 
+        end case;   
     end process;
+    
+    reset_out_spike <= control(6);
+    reset_out_u     <= control(5);
+    reset_acc       <= control(4);
+    en_out_spike    <= control(3);
+    en_out_u        <= control(2);
+    en_acc          <= control(1);    
+    src_ctrl        <= control(0);
  --
 end Behavioral;
