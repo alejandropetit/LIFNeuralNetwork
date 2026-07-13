@@ -7,27 +7,29 @@ use IEEE.FIXED_PKG.ALL;
 
 entity datapath_neuron is
     generic( 
-        width      : positive;
-        int_width  : natural;
-        frac_width : natural;
-        beta       : real; 
-        Vth        : real;
-        decay_option : integer);
+        width        : positive; -- total fixed-point width (integer + fractional bits)
+        int_width    : natural; -- number of integer bits
+        frac_width   : natural; -- number of fractional bits
+        beta         : real; -- membrane decay factor
+        Vth          : real; -- spike generation threshold
+        decay_option : decay_option_t -- Selects how membrane decay is computed
+    ); 
     Port ( 
-        clk              :  in   STD_LOGIC;
-        reset            :  in   STD_LOGIC;
-        reset_out_spike  :  in   STD_LOGIC;
-        reset_out_u      :  in   STD_LOGIC;
-        reset_acc        :  in   STD_LOGIC;
-        en_out_spike     :  in   STD_LOGIC;
-        en_out_u         :  in   STD_LOGIC;
-        en_acc           :  in   STD_LOGIC; 
-        src_ctrl         :  in   STD_LOGIC;          
-        weight           :  in   STD_LOGIC_VECTOR(width-1 downto 0);
-        decay_sig        :  in   SFIXED(int_width-1 downto -frac_width);
-        zero             :  out  STD_LOGIC;
-        y                :  out  STD_LOGIC;
-        spike_out        :  out  STD_LOGIC);
+        clk              :  in   STD_LOGIC; -- system clock
+        reset            :  in   STD_LOGIC; -- active-high reset
+        src_ctrl         :  in   STD_LOGIC; -- selects the 2:1 multiplexer input (weights or decay)         
+        weight           :  in   STD_LOGIC_VECTOR(width-1 downto 0); -- synaptic weight corresponding to the current input spike
+        decay_sig        :  in   SFIXED(int_width-1 downto -frac_width); -- accumulated membrane decay factor
+        reset_out_spike  :  in   STD_LOGIC; -- reset for output spike register
+        reset_out_u      :  in   STD_LOGIC; -- reset for output voltage register
+        reset_acc        :  in   STD_LOGIC; -- reset for accumulate voltage register
+        en_out_spike     :  in   STD_LOGIC; -- enable for output spike register
+        en_out_u         :  in   STD_LOGIC; -- enable for output voltage register
+        en_acc           :  in   STD_LOGIC; -- enable for accumulate voltage register
+        zero             :  out  STD_LOGIC; -- asserted when the membrane voltage is zero
+        y                :  out  STD_LOGIC; -- combinational output spike
+        spike_out        :  out  STD_LOGIC  -- registered output spike
+    );
 end datapath_neuron;
 
 architecture option1 of datapath_neuron is
@@ -40,9 +42,9 @@ architecture option1 of datapath_neuron is
 begin
 --
 
-decay_gen: if decay_option = 1 generate
+decay_gen: if decay_option = DECAY_ACCUMULATE generate
     decay_factor <= decay_sig;
-elsif decay_option = 0 generate
+else generate
     decay_factor <= betasig;
 end generate;
 

@@ -13,6 +13,10 @@ package neuron_package is
         DECAY,
         OUTPUT
     );
+    type decay_option_t is(
+        DECAY_EVERY_STEP,
+        DECAY_ACCUMULATE
+    );
     
     
     type int_array_t is array (natural range <>) of integer;

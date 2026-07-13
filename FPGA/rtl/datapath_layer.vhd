@@ -14,10 +14,11 @@ entity datapath_layer is
         in_size     : positive;
         step_size   : positive := in_size + 3;
         num_neurons : positive;
-        decay_option: integer := 0;
+        decay_option: decay_option_t;
         beta        : real;
         Vth         : real;
-        mem_file    : string);    
+        mem_file    : string
+    );    
     Port ( 
         clk            : in  STD_LOGIC;
         reset          : in  STD_LOGIC;
@@ -26,7 +27,8 @@ entity datapath_layer is
         weight_addr    : in  STD_LOGIC_VECTOR(clog2(in_size)-1 downto 0);
         cnt_step       : in  STD_LOGIC_VECTOR(clog2(step_size)-1 downto 0);
         state          : in  state_type;
-        layer_out      : out STD_LOGIC_VECTOR (num_neurons-1 downto 0));
+        layer_out      : out STD_LOGIC_VECTOR (num_neurons-1 downto 0)
+    );
 end datapath_layer;
 
 architecture Behavioral of datapath_layer is
@@ -75,7 +77,8 @@ begin
                     in_size => in_size,
                     beta => beta,
                     Vth => Vth,
-                    decay_option => decay_option)
+                    decay_option => decay_option
+                )
                 port map(
                     clk => clk,
                     reset => reset,
@@ -85,33 +88,36 @@ begin
                     spike_in => layer_in,
                     spike_out => layer_out(neuron_idx),
                     cnt_step => cnt_step,
-                    decay_sig => decay_sig);                  
-
+                    decay_sig => decay_sig
+                );                  
             end generate;
         end generate;
     end generate;
     
-    decay: if decay_option = 1 generate
-        signal decay_select : STD_LOGIC;
+    decay_inst: if decay_option = DECAY_ACCUMULATE generate
+        signal former_spike :STD_LOGIC;
         constant beta_sig  :  SFIXED(int_width-1 downto -frac_width) := to_sfixed(beta, int_width-1, -frac_width);
-        signal src_a: SFIXED(int_width-1 downto -frac_width); 
-    begin
-        
+        signal src_a, accumulate_sig: SFIXED(int_width-1 downto -frac_width); 
+    begin      
         process(clk) begin
             if rising_edge(clk) then
-               decay_select <= or(layer_in);    
-               src_a <= decay_sig;  
+                if reset = '1' then
+                    former_spike <= '1';
+                elsif state = OUTPUT then
+                    former_spike <= or(layer_in);
+                    if former_spike = '1' then
+                        src_a <= beta_sig;
+                    else
+                        src_a <= accumulate_sig;
+                    end if;
+                end if;
             end if;
-        end process;        
-        
-        process(all) begin
-            decay_sig <= beta_sig when decay_select = '1' else resize(arg => src_a * beta_sig,left_index => int_width-1 ,right_index => -frac_width);
         end process;
         
-        src_a_readout <= src_a;
-        decay_select_readout <= decay_select;
+        process(all) begin
+            accumulate_sig <= resize(arg => src_a * beta_sig,left_index => int_width-1 ,right_index => -frac_width); 
+            decay_sig <= beta_sig when former_spike='1' else accumulate_sig;  
+        end process;    
     end generate;
-    
-    
-    
+        
 end Behavioral;

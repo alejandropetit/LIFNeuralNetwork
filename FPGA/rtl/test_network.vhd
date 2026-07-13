@@ -3,6 +3,7 @@ library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use ieee.fixed_pkg.all;library IEEE;
 use ieee.fixed_pkg.all;use IEEE.STD_LOGIC_1164.ALL;
+use WORK.NEURON_PACKAGE.ALL;
 
 
 entity test_network is
@@ -10,8 +11,8 @@ end test_network;
 
 architecture Behavioral of test_network is
         -- Parámetros
-    constant int_width  : integer := 8;
-    constant frac_width : integer := 8;
+    constant int_width  : integer := 9;
+    constant frac_width : integer := 9;
     constant depth      : integer := 3;
     constant int_size   : integer := 8;
     constant frac_size  : integer := 8;
@@ -31,7 +32,7 @@ architecture Behavioral of test_network is
 
     -- Clock period
     constant clk_period : time := 10 ns;
-
+        
 begin
     uut0: entity work.lif_network
         generic map (
@@ -40,7 +41,7 @@ begin
             in_size => in_size,
             out_size => out_size,
             layer_size => layer_size,
-            decay_option => 0,
+            decay_option => DECAY_EVERY_STEP,
             beta => beta,
             Vth => Vth
         )
@@ -57,7 +58,7 @@ begin
             in_size => in_size,
             out_size => out_size,
             layer_size => layer_size,
-            decay_option => 1,
+            decay_option => DECAY_ACCUMULATE,
             beta => beta,
             Vth => Vth
         )

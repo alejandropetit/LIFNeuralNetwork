@@ -5,49 +5,61 @@ use WORK.NEURON_PACKAGE.ALL;
 
 entity control_neuron is
 generic( 
-    in_size     : positive;
-    step_size   : positive := in_size + 3;
-    decay_option: integer;
-    refrac      : natural:=4);
+    in_size     : positive; -- number of inputs to the layer
+    step_size   : positive := in_size + 3; -- duration of a step
+    decay_option: decay_option_t; -- selects the accumulation decay type
+    refrac      : natural:=4  -- duration of the refractory period
+);
 Port ( 
-    clk             :  in   STD_LOGIC;
-    reset           :  in   STD_LOGIC;
-    zero            :  in   STD_LOGIC;
-    spike           :  in   STD_LOGIC;
-    spike_out       :  in   STD_LOGIC;
-    spike_in        :  in   STD_LOGIC_VECTOR(in_size-1 downto 0);
-    cnt_step        :  in   STD_LOGIC_VECTOR(clog2(step_size)-1 downto 0);
-    actual_weight   :  in   STD_LOGIC_VECTOR(in_size-1 downto 0);
-    state           :  in   state_type;
-    reset_out_spike :  out  STD_LOGIC;
-    reset_out_u     :  out  STD_LOGIC;
-    reset_acc       :  out  STD_LOGIC;
-    en_out_spike    :  out  STD_LOGIC;
-    en_out_u        :  out  STD_LOGIC;
-    en_acc          :  out  STD_LOGIC;  
-    src_ctrl        :  out  STD_LOGIC);
+    clk             :  in   STD_LOGIC; -- system clock
+    reset           :  in   STD_LOGIC; -- active-high reset
+    zero            :  in   STD_LOGIC; -- asserted when the membrane voltage is zero
+    spike           :  in   STD_LOGIC; -- Spike will be generated on the next clock cycle
+    spike_out       :  in   STD_LOGIC; -- Current output spike 
+    spike_in        :  in   STD_LOGIC_VECTOR(in_size-1 downto 0); -- input spike vector
+    cnt_step        :  in   STD_LOGIC_VECTOR(clog2(step_size)-1 downto 0); -- step counter
+    current_spike   :  in   STD_LOGIC_VECTOR(in_size-1 downto 0); -- spike currently being processed
+    state           :  in   state_type; -- current layer state
+    reset_out_spike :  out  STD_LOGIC; -- reset for output spike register
+    reset_out_u     :  out  STD_LOGIC; -- reset for output voltage register
+    reset_acc       :  out  STD_LOGIC; -- reset for accumulate voltage register
+    en_out_spike    :  out  STD_LOGIC; -- enable for output spike register
+    en_out_u        :  out  STD_LOGIC; -- enable for output voltage register
+    en_acc          :  out  STD_LOGIC; -- enable for accumulate voltage register  
+    src_ctrl        :  out  STD_LOGIC  -- Selects the 2:1 multiplexer input (weights or decay)
+);
 end control_neuron;
 
-architecture Behavioral2 of control_neuron is
+architecture Behavioral of control_neuron is
     signal cnt_refrac : unsigned( clog2(refrac)-1 downto 0 ) := (others => '0');
-    signal ctrl_state, ctrl_state_aux : STD_LOGIC;
+    signal ctrl_state : STD_LOGIC;
+    signal control : STD_LOGIC_VECTOR(6 downto 0);
+    signal no_input_voltage_zero : boolean;
+    signal refractory_active : boolean;
+    signal no_input_weight_state : boolean;
+    signal no_input : boolean;
     signal neuron_state : state_type;
+    constant CTRL_INPUT : STD_LOGIC_VECTOR(6 downto 0) := "0010000";
+    constant CTRL_DECAY : STD_LOGIC_VECTOR(6 downto 0) := "0000011";
 begin
     
-    decay_gen: if decay_option = 1 generate
-        ctrl_state_aux <= '1' when (zero='1' and unsigned(spike_in)=0) or (spike_out='0' and cnt_refrac /= 0) or (zero = '0' and unsigned(spike_in) = 0 and state = WEIGHT) or (unsigned(spike_in) = 0) else '0';
+    
+    no_input <= spike_in = (spike_in'range => '0');
+    
+    no_input_voltage_zero <= (zero = '1') and no_input;
+    refractory_active     <= (spike_out = '0') and (cnt_refrac /= 0);
+    no_input_weight_state <= (zero = '0') and no_input and (state = WEIGHT);
+    
+    decay_gen: if decay_option = DECAY_ACCUMULATE generate
+        ctrl_state <= '1' when no_input_voltage_zero or refractory_active or no_input_weight_state or no_input else '0';
     else generate
-        ctrl_state_aux <= '1' when (zero='1' and unsigned(spike_in)=0) or (spike_out='0' and cnt_refrac /= 0) or (zero = '0' and unsigned(spike_in) = 0 and state = WEIGHT) else '0';
+        ctrl_state <= '1' when no_input_voltage_zero or refractory_active or no_input_weight_state else '0';
     end generate;
     
-    process(all) begin
-        --here it should be a little change when decay_option is not 0 if there's clock gating
-        ctrl_state <= ctrl_state_aux;
-        neuron_state <= state when ctrl_state = '0' else INPUT; 
-    end process;
+    
+    neuron_state <= state when ctrl_state = '0' else INPUT; 
 
 --Counters   
-     
     process(clk) begin
         if rising_edge(clk) then
             if unsigned(cnt_step) = step_size-1 then
@@ -61,8 +73,7 @@ begin
     end process;
  --
  
- --Deecoder
-    
+ --Deecoder  
     process(all) begin
         case neuron_state is
             when INPUT =>
@@ -110,4 +121,4 @@ begin
         end case;  
     end process;
  --
-end Behavioral2;
+end Behavioral;

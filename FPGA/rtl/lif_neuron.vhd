@@ -5,14 +5,15 @@ use IEEE.FIXED_PKG.ALL;
 
 entity lif_neuron is
     generic (
-        width      : positive;
-        int_width  : natural;
-        frac_width : natural; 
-        in_size    : positive;
-        step_size  : positive:= in_size + 3;
-        beta       : real; 
-        Vth        : real;
-        decay_option: integer);
+        width      : positive; -- total fixed-point width (integer + fractional bits)
+        int_width  : natural; -- number of integer bits
+        frac_width : natural; -- number of fractional bits 
+        in_size    : positive; -- number of inputs to the layer
+        step_size  : positive:= in_size + 3; -- duration of a step
+        beta       : real; -- membrane decay factor 
+        Vth        : real; -- spike generation threshold
+        decay_option: decay_option_t -- Selects how membrane decay is computed
+    );
     Port ( 
         clk            :  in  STD_LOGIC;
         reset          :  in  STD_LOGIC;
@@ -30,14 +31,15 @@ architecture Behavioral of lif_neuron is
     signal reset_out_spike , reset_out_u , reset_acc , en_out_spike , en_out_u , en_acc : std_logic; 
 begin
     -- neuron datapath instantiation
-    datapath: entity work.datapath_neuron(option1)
+    datapath: entity work.datapath_neuron
     generic map(
         width => width,
         int_width => int_width,
         frac_width => frac_width,
         beta => beta,
         Vth => Vth,
-        decay_option => decay_option)
+        decay_option => decay_option
+    )
     port map( 
         clk => clk,
         reset => reset,
@@ -52,14 +54,16 @@ begin
         decay_sig => decay_sig,
         zero => zero,
         y => spike,
-        spike_out => spike_out);
+        spike_out => spike_out
+    );
     -- neuron datapath instantiation
     
     -- neuron control instantiation                                                  
     controller: entity work.control_neuron 
     generic map(
         in_size => in_size,
-        decay_option => decay_option) 
+        decay_option => decay_option
+    ) 
     port map(
         clk => clk,
         reset => reset,
