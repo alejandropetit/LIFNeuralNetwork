@@ -25,6 +25,8 @@ architecture Behavioral of test_network is
     -- Señales DUT
     signal clk       : std_logic;
     signal reset     : std_logic := '1';
+    signal valid     : std_logic;
+    signal ready     : std_logic;
     signal spike_in  : std_logic_vector(in_size-1 downto 0);
     signal spike_out0 : std_logic_vector(0 downto 0);
     signal spike_out1 : std_logic_vector(0 downto 0);
@@ -48,6 +50,8 @@ begin
         port map (
             clk       => clk,
             reset     => reset,
+            valid => valid,
+            ready => ready,
             network_in  => spike_in,
             network_out => spike_out0
         );
@@ -65,6 +69,8 @@ begin
         port map (
             clk       => clk,
             reset     => reset,
+            valid => valid,
+            ready => ready,
             network_in  => spike_in,
             network_out => spike_out1
         );

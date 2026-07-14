@@ -14,6 +14,7 @@ entity control_layer is
         weights_done      :  in   STD_LOGIC; --all layers weight additions complete
         layer_in          :  in   STD_LOGIC_VECTOR(in_size-1 downto 0); --input spike vector
         weight_accum_done :  out  STD_LOGIC; --layer weight additions complete
+        output_state      :  out  STD_LOGIC; --asserted when the layer FSM is in OUTPUT
         current_spike     :  out  STD_LOGIC_VECTOR(in_size-1 downto 0); --spike currently being processed
         weight_addr       :  out  STD_LOGIC_VECTOR(clog2(in_size)-1 downto 0); -- weight memory address   
         cnt_step          :  out  STD_LOGIC_VECTOR(clog2(step_size)-1 downto 0); --step duration counter
@@ -111,5 +112,6 @@ begin
 
     -- Assert when all spikes have been processed during the WEIGHT state.
     weight_accum_done <= '1' when unsigned(aux_current_spike) = 0 and state = WEIGHT else '0';
+    output_state <= '1' when state = OUTPUT else '0';
     
 end Behavioral;

@@ -48,46 +48,46 @@ begin
         -- weight instantiation
         weight_inst: entity work.weight_unit 
         generic map(
-            width => width*neurons_per_mem,
-            depth => mem_depth,
+            width     => width*neurons_per_mem,
+            depth     => mem_depth,
             init_addr => init_addr,
-            in_size => in_size,
-            mem_file => mem_file
+            in_size   => in_size,
+            mem_file  => mem_file
         )
         port map(
-            clk => clk,
+            clk   => clk,
             reset => reset,
-            we  => '0',
-            din => (others => '0'),
-            addr => mem_addr,
-            dout => weight
+            we    => '0',
+            din   => (others => '0'),
+            addr  => mem_addr,
+            dout  => weight
         ); 
         gen_neurons: for i in 0 to neurons_per_mem-1 generate 
             constant neuron_idx : integer := g*neurons_per_mem+i;
         begin
             valid_neuron: if neuron_idx < num_neurons generate
-            begin
+            begin 
                 -- neuron instatiation
                 neuron_inst: entity work.lif_neuron
                 generic map(
-                    width => width,
-                    int_width => int_width,
-                    frac_width => frac_width,
-                    in_size => in_size,
-                    beta => beta,
-                    Vth => Vth,
+                    width        => width,
+                    int_width    => int_width,
+                    frac_width   => frac_width,
+                    in_size      => in_size,
+                    beta         => beta,
+                    Vth          => Vth,
                     decay_option => decay_option
                 )
                 port map(
-                    clk => clk,
-                    reset => reset,
-                    state => state,
+                    clk           => clk,
+                    reset         => reset,
+                    state         => state,
                     current_spike => current_spike,
-                    weight => weight(width*(i+1)-1 downto width*i),
-                    spike_in => layer_in,
-                    spike_out => layer_out(neuron_idx),
-                    cnt_step => cnt_step,
-                    decay_sig => decay_sig
+                    weight        => weight(width*(i+1)-1 downto width*i),
+                    spike_in      => layer_in,
+                    spike_out     => layer_out(neuron_idx),
+                    cnt_step      => cnt_step,
+                    decay_sig     => decay_sig
                 );                  
             end generate;
         end generate;

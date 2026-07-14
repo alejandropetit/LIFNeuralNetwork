@@ -21,6 +21,7 @@ entity lif_layer is
         weights_done      : in  STD_LOGIC;
         layer_in          : in  STD_LOGIC_VECTOR (in_size-1 downto 0);
         weight_accum_done : out STD_LOGIC;
+        output_state      : out STD_LOGIC;
         layer_out         : out STD_LOGIC_VECTOR (num_neurons-1 downto 0)
     );
 end lif_layer;
@@ -65,6 +66,7 @@ begin
         reset             => reset,
         weights_done      => weights_done,
         weight_accum_done => weight_accum_done,
+        output_state      => output_state,
         current_spike     => current_spike,
         state             => state,
         layer_in          => layer_in,
