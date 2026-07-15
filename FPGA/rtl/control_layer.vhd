@@ -1,3 +1,4 @@
+
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use WORK.NEURON_PACKAGE.ALL;
@@ -23,9 +24,10 @@ entity control_layer is
 end control_layer;
 
 architecture Behavioral of control_layer is
-    signal next_state: state_type;
-    signal first_cycle: STD_LOGIC; --asserted during the first cycle after reset
-    signal selected_spikes, remaining_spikes: STD_LOGIC_VECTOR(in_size-1 downto 0);
+    signal next_state        : state_type;
+    signal first_cycle       : STD_LOGIC; --asserted during the first cycle after reset
+    signal selected_spikes   : STD_LOGIC_VECTOR(in_size-1 downto 0);
+    signal remaining_spikes  : STD_LOGIC_VECTOR(in_size-1 downto 0);
     signal aux_current_spike : STD_LOGIC_VECTOR(in_size-1 downto 0);
 begin
 

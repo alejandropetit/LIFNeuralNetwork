@@ -27,10 +27,10 @@ entity lif_layer is
 end lif_layer;
 
 architecture Behavioral of lif_layer is
-    signal state: state_type;
-    signal cnt_step: STD_LOGIC_VECTOR(clog2(step_size)-1 downto 0);
-    signal weight_addr :   STD_LOGIC_VECTOR(clog2(in_size)-1 downto 0);
-    signal current_spike   :  STD_LOGIC_VECTOR(in_size-1 downto 0);
+    signal state         : state_type;
+    signal cnt_step      : STD_LOGIC_VECTOR(clog2(step_size)-1 downto 0);
+    signal weight_addr   : STD_LOGIC_VECTOR(clog2(in_size)-1 downto 0);
+    signal current_spike : STD_LOGIC_VECTOR(in_size-1 downto 0);
 begin
 
     --layer instantiation

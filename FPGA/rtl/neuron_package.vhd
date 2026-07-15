@@ -20,6 +20,7 @@ package neuron_package is
     
     
     type int_array_t is array (natural range <>) of integer;
+    type real_array_t is array (natural range <>) of real;
     type file_array_t is array (natural range <>) of string(1 to 8);
     type RamType is array (0 to 511) of std_logic_vector (71 downto 0);
     

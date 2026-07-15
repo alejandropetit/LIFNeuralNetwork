@@ -1,3 +1,4 @@
+
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
@@ -33,12 +34,12 @@ entity datapath_neuron is
 end datapath_neuron;
 
 architecture option1 of datapath_neuron is
-    signal   u           :  SFIXED(int_width-1 downto -frac_width);
-    signal   result      :  SFIXED(int_width-1 downto -frac_width);
-    signal   accumulate  :  SFIXED(int_width-1 downto -frac_width);
-    signal   decay_factor:  SFIXED(int_width-1 downto -frac_width);
-    constant betasig     :  SFIXED(int_width-1 downto -frac_width) := to_sfixed(beta, int_width-1, -frac_width);
-    constant Vthsig      :  SFIXED(int_width-1 downto -frac_width) := to_sfixed(Vth, int_width-1, -frac_width);
+    signal   u            :  SFIXED(int_width-1 downto -frac_width);
+    signal   result       :  SFIXED(int_width-1 downto -frac_width);
+    signal   accumulate   :  SFIXED(int_width-1 downto -frac_width);
+    signal   decay_factor :  SFIXED(int_width-1 downto -frac_width);
+    constant betasig      :  SFIXED(int_width-1 downto -frac_width) := to_sfixed(beta, int_width-1, -frac_width);
+    constant Vthsig       :  SFIXED(int_width-1 downto -frac_width) := to_sfixed(Vth, int_width-1, -frac_width);
 begin
 --
 

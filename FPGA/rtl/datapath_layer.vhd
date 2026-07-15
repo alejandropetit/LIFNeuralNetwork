@@ -32,11 +32,11 @@ entity datapath_layer is
 end datapath_layer;
 
 architecture Behavioral of datapath_layer is
-    constant mem_depth : integer := 1024;
+    constant mem_depth       : integer := 1024;
     constant neurons_per_mem : integer := 4;
-    constant num_groups : integer :=  (num_neurons + neurons_per_mem -1)/neurons_per_mem;
-    signal   mem_addr : STD_LOGIC_VECTOR(clog2(mem_depth)-1 downto 0);
-    signal   decay_sig : SFIXED(int_width-1 downto -frac_width);
+    constant num_groups      : integer :=  (num_neurons + neurons_per_mem -1)/neurons_per_mem;
+    signal   mem_addr        : STD_LOGIC_VECTOR(clog2(mem_depth)-1 downto 0);
+    signal   decay_sig       : SFIXED(int_width-1 downto -frac_width);
 begin
 
     mem_addr <= std_logic_vector(resize(unsigned(weight_addr), mem_addr'length));         

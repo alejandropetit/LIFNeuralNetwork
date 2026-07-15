@@ -1,3 +1,4 @@
+
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
@@ -5,10 +6,10 @@ use WORK.NEURON_PACKAGE.ALL;
 
 entity control_neuron is
 generic( 
-    in_size     : positive; -- number of inputs to the layer
-    step_size   : positive := in_size + 3; -- duration of a step
-    decay_option: decay_option_t; -- selects the accumulation decay type
-    refrac      : natural:=4  -- duration of the refractory period
+    in_size      : positive; -- number of inputs to the layer
+    step_size    : positive := in_size + 3; -- duration of a step
+    decay_option : decay_option_t; -- selects the accumulation decay type
+    refrac       : natural:=4  -- duration of the refractory period
 );
 Port ( 
     clk             :  in   STD_LOGIC; -- system clock
@@ -31,16 +32,16 @@ Port (
 end control_neuron;
 
 architecture Behavioral of control_neuron is
-    signal cnt_refrac : unsigned( clog2(refrac)-1 downto 0 ) := (others => '0');
-    signal ctrl_state : STD_LOGIC;
-    signal control : STD_LOGIC_VECTOR(6 downto 0);
+    signal cnt_refrac            : unsigned( clog2(refrac)-1 downto 0 ) := (others => '0');
+    signal ctrl_state            : STD_LOGIC;
+    signal control               : STD_LOGIC_VECTOR(6 downto 0);
     signal no_input_voltage_zero : boolean;
-    signal refractory_active : boolean;
+    signal refractory_active     : boolean;
     signal no_input_weight_state : boolean;
-    signal no_input : boolean;
-    signal neuron_state : state_type;
-    constant CTRL_INPUT : STD_LOGIC_VECTOR(6 downto 0) := "0010000";
-    constant CTRL_DECAY : STD_LOGIC_VECTOR(6 downto 0) := "0000011";
+    signal no_input              : boolean;
+    signal neuron_state          : state_type;
+    constant CTRL_INPUT          : STD_LOGIC_VECTOR(6 downto 0) := "0010000";
+    constant CTRL_DECAY          : STD_LOGIC_VECTOR(6 downto 0) := "0000011";
 begin
     
     

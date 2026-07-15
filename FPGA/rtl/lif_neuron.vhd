@@ -1,3 +1,4 @@
+
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use WORK.NEURON_PACKAGE.ALL;
@@ -28,8 +29,17 @@ entity lif_neuron is
 end lif_neuron;
 
 architecture Behavioral of lif_neuron is
-    signal src_ctrl, acc_ctrl, out_ctrl, spike, zero: std_logic;
-    signal reset_out_spike , reset_out_u , reset_acc , en_out_spike , en_out_u , en_acc : std_logic; 
+    signal src_ctrl        : STD_LOGIC;
+    signal acc_ctrl        : STD_LOGIC;
+    signal out_ctrl        : STD_LOGIC;
+    signal spike           : STD_LOGIC;
+    signal zero            : STD_LOGIC;
+    signal reset_out_spike : STD_LOGIC;
+    signal reset_out_u     : STD_LOGIC;
+    signal reset_acc       : STD_LOGIC;
+    signal en_out_spike    : STD_LOGIC;
+    signal en_out_u        : STD_LOGIC;
+    signal en_acc          : std_logic; 
 begin
     -- neuron datapath instantiation
     datapath: entity work.datapath_neuron

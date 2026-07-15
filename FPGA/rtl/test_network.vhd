@@ -13,25 +13,40 @@ architecture Behavioral of test_network is
         -- Parámetros
     constant int_width  : integer := 9;
     constant frac_width : integer := 9;
-    constant depth      : integer := 3;
-    constant int_size   : integer := 8;
-    constant frac_size  : integer := 8;
-    constant in_size    : integer := 3;
-    constant out_size   : integer := 1;
-    constant layer_size : integer := 2;
-    constant beta       : real    := 0.9900498337;
-    constant Vth        : real    := 100.0;
+    constant neuron_size: int_array_t := (3,1);
+    constant beta       : real_array_t    := (0 => 0.9900498337);
+    constant Vth        : real_array_t    := (0 => 100.0);
     
     -- Señales DUT
     signal clk       : std_logic;
     signal reset     : std_logic := '1';
     signal valid     : std_logic;
     signal ready     : std_logic;
-    signal spike_in  : std_logic_vector(in_size-1 downto 0);
+    signal spike_in  : std_logic_vector(neuron_size(neuron_size'low)-1 downto 0);
     signal spike_out0 : std_logic_vector(0 downto 0);
     signal spike_out1 : std_logic_vector(0 downto 0);
     signal spike_out2 : std_logic_vector(0 downto 0);
-
+    
+    procedure send_sample(
+        signal clk      : in std_logic;
+        signal ready    : in std_logic;
+        signal valid    : out std_logic;
+        signal spike_in : out std_logic_vector(neuron_size(neuron_size'low)-1 downto 0);
+        constant data   : std_logic_vector(neuron_size(neuron_size'low)-1 downto 0);
+        constant idle   : time := 0 ns
+    ) is
+    begin
+        spike_in <= data;
+        valid <= '1';
+    
+        wait until rising_edge(clk) and ready = '1';
+    
+        valid <= '0';
+    
+        wait for idle;
+    end procedure;
+    
+    
     -- Clock period
     constant clk_period : time := 10 ns;
         
@@ -40,9 +55,7 @@ begin
         generic map (
             int_width => int_width,
             frac_width => frac_width,
-            in_size => in_size,
-            out_size => out_size,
-            layer_size => layer_size,
+            neuron_size => neuron_size,
             decay_option => DECAY_EVERY_STEP,
             beta => beta,
             Vth => Vth
@@ -59,9 +72,7 @@ begin
         generic map (
             int_width => int_width,
             frac_width => frac_width,
-            in_size => in_size,
-            out_size => out_size,
-            layer_size => layer_size,
+            neuron_size => neuron_size,
             decay_option => DECAY_ACCUMULATE,
             beta => beta,
             Vth => Vth
@@ -95,33 +106,33 @@ begin
         -- Reset activo
         wait for 20 ns;
         reset <= '0';
+        
 
-
-        spike_in <= "111"; wait for 65 ns;
-        spike_in <= "110"; wait for 50 ns;
-        spike_in <= "000"; wait for 40 ns;
-        spike_in <= "000"; wait for 40 ns;
-        spike_in <= "000"; wait for 40 ns;
-        spike_in <= "100"; wait for 40 ns;
-        spike_in <= "100"; wait for 40 ns;
-        spike_in <= "011"; wait for 60 ns;
-        spike_in <= "001"; wait for 60 ns;
-        spike_in <= "100"; wait for 60 ns;
-        spike_in <= "111"; wait for 60 ns;
-        spike_in <= "011"; wait for 60 ns;
-        spike_in <= "110"; wait for 60 ns;
-        spike_in <= "011"; wait for 60 ns;
-        spike_in <= "101"; wait for 60 ns;
-        spike_in <= "110"; wait for 60 ns;
-        spike_in <= "101"; wait for 60 ns;
-        spike_in <= "010"; wait for 60 ns; 
-        spike_in <= "111"; wait for 60 ns;
-        spike_in <= "010"; wait for 60 ns;
-        spike_in <= "110"; wait for 60 ns;
-        spike_in <= "101"; wait for 60 ns;
-        spike_in <= "010"; wait for 60 ns;
-        spike_in <= "111"; wait for 60 ns;
-        spike_in <= "010"; wait for 60 ns;       
+        send_sample(clk, ready, valid, spike_in, "111", 65 ns);
+        send_sample(clk, ready, valid, spike_in, "110", 50 ns);
+        send_sample(clk, ready, valid, spike_in, "000", 40 ns);
+        send_sample(clk, ready, valid, spike_in, "000", 40 ns);
+        send_sample(clk, ready, valid, spike_in, "000", 40 ns);
+        send_sample(clk, ready, valid, spike_in, "100", 40 ns);
+        send_sample(clk, ready, valid, spike_in, "100", 40 ns);
+        send_sample(clk, ready, valid, spike_in, "011", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "001", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "100", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "111", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "011", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "110", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "011", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "101", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "110", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "101", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "010", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "111", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "010", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "110", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "101", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "010", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "111", 60 ns);
+        send_sample(clk, ready, valid, spike_in, "010", 60 ns);      
         wait;
     end process;
 
