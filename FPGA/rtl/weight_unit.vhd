@@ -6,7 +6,7 @@ use WORK.NEURON_PACKAGE.ALL;
 
 entity weight_unit is
     generic(
-        width     : integer := 18;
+        width     : integer;
         depth     : integer;
         init_addr : integer;
         in_size   : integer;

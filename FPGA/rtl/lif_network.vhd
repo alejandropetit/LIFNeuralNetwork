@@ -6,7 +6,7 @@ use WORK.NEURON_PACKAGE.ALL;
 
 entity lif_network is
     generic(
-        int_width     : natural := 9;
+        int_width     : natural := 1;
         frac_width    : natural := 9;
         decay_option  : decay_option_t := DECAY_ACCUMULATE;
         network_shape : int_array_t := (8,8);
@@ -31,6 +31,20 @@ architecture Behavioral of lif_network is
      signal en_front          : STD_LOGIC;
      signal en_back           : STD_LOGIC;
 begin
+    
+    assert beta'length = network_shape'length - 1
+        report "beta length is " &
+            integer'image(beta'length) &
+            ", expected " &
+            integer'image(network_shape'length - 1)
+        severity FAILURE;
+       
+    assert Vth'length = network_shape'length - 1
+        report "Vth length is " &
+            integer'image(Vth'length) &
+            ", expected " &
+            integer'image(network_shape'length - 1)
+        severity FAILURE;
     
     datapath: entity work.network_datapath 
     generic map(

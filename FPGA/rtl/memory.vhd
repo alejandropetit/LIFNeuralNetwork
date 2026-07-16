@@ -2,7 +2,8 @@
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
-use ieee.std_logic_textio.all;
+--use ieee.std_logic_textio.all;
+use STD.TEXTIO.all;
 use WORK.NEURON_PACKAGE.ALL;
 
 
@@ -25,6 +26,30 @@ Port (
 end memory;
 
 architecture inferred_sdpram of memory is
+    type RamType is array (0 to depth-1) of std_logic_vector (width-1 downto 0);
+    
+    impure function InitRamFromFile (
+        RamFileName : in string;
+        in_size     : in integer;
+        init_addr   : in integer
+    ) return RamType is
+        file RamFile : text is in RamFileName;
+        variable RamFileLine : line;
+        variable RAM         : RamType;
+    begin
+        for j in 0 to init_addr-1 loop
+            readline(RamFile, RamFileLine);
+        end loop;
+        
+        for i in 0 to in_size-1 loop
+            if not endfile(RamFile) then
+                readline(RamFile, RamFileLine);
+                hread(RamFileLine, RAM(i));
+            end if;
+        end loop;
+        return RAM;
+    end function;
+
     signal RAM : RamType := InitRamFromFile("../memory/" & mem_file, in_size, init_addr);
     attribute ram_style : string;
     attribute ram_style of RAM : signal is "block";    
@@ -45,6 +70,29 @@ end inferred_sdpram;
 
 
 architecture inferred_sprom of memory is
+    type RamType is array (0 to depth-1) of std_logic_vector (width-1 downto 0);
+    
+    impure function InitRamFromFile (
+        RamFileName : in string;
+        in_size     : in integer;
+        init_addr   : in integer
+    ) return RamType is
+        file RamFile : text is in RamFileName;
+        variable RamFileLine : line;
+        variable RAM         : RamType;
+    begin
+        for j in 0 to init_addr-1 loop
+            readline(RamFile, RamFileLine);
+        end loop;
+        
+        for i in 0 to in_size-1 loop
+            if not endfile(RamFile) then
+                readline(RamFile, RamFileLine);
+                hread(RamFileLine, RAM(i));
+            end if;
+        end loop;
+        return RAM;
+    end function;
     signal RAM : RamType := InitRamFromFile("../memory/" & mem_file, in_size, init_addr);
     attribute ram_style : string;
     attribute ram_style of RAM : signal is "block";

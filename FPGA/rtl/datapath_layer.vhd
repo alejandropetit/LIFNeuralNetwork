@@ -10,7 +10,6 @@ entity datapath_layer is
     generic(
         int_width   : natural;
         frac_width  : natural;
-        width       : positive := int_width + frac_width;
         in_size     : positive;
         step_size   : positive := in_size + 3;
         num_neurons : positive;
@@ -32,6 +31,7 @@ entity datapath_layer is
 end datapath_layer;
 
 architecture Behavioral of datapath_layer is
+    constant width           : positive := int_width + frac_width;
     constant mem_depth       : integer := 1024;
     constant neurons_per_mem : integer := 4;
     constant num_groups      : integer :=  (num_neurons + neurons_per_mem -1)/neurons_per_mem;

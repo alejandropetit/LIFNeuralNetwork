@@ -11,11 +11,11 @@ end test_network;
 
 architecture Behavioral of test_network is
         -- Parámetros
-    constant int_width  : integer := 9;
-    constant frac_width : integer := 9;
+    constant int_width  : integer := 1;
+    constant frac_width : integer := 1;
     constant neuron_size: int_array_t := (3,1);
-    constant beta       : real_array_t    := (0 => 0.9900498337);
-    constant Vth        : real_array_t    := (0 => 100.0);
+    constant beta       : real_array_t    := (0.9900498337, 0.9900498337);
+    constant Vth        : real_array_t    := (100.0, 100.0);
     
     -- Señales DUT
     signal clk       : std_logic;
@@ -55,7 +55,7 @@ begin
         generic map (
             int_width => int_width,
             frac_width => frac_width,
-            neuron_size => neuron_size,
+            network_shape => neuron_size,
             decay_option => DECAY_EVERY_STEP,
             beta => beta,
             Vth => Vth
@@ -72,7 +72,7 @@ begin
         generic map (
             int_width => int_width,
             frac_width => frac_width,
-            neuron_size => neuron_size,
+            network_shape => neuron_size,
             decay_option => DECAY_ACCUMULATE,
             beta => beta,
             Vth => Vth
