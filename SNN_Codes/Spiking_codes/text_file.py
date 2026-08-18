@@ -40,11 +40,11 @@ class text_files:
             file_name (str): Name of the CSV file without extension.
             path (str): Base directory for the ``data_result`` folder.
             structure (list, optional): Column names used when creating
-                a new file.
+            a new file.
         """
         self.path = path+'/data_result/'
         self.name = self.path+file_name+'.csv'
-        self.ID = 0
+        self.ID = 1
         self.columns_names = []
 
         if new_file:

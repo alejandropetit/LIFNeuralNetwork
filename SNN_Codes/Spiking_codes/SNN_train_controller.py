@@ -84,8 +84,8 @@ class SNN_complete_train_test:
             self.step = int(info[14])
             self.time_network = int(info[15])
             self.dt = int(info[16])
-            self.test = int(info[17]) == 1
-            self.PI_test = int(info[18]) == 1
+            self.test = int(info[17]) == 1          #simulation_type : test
+            self.PI_test = int(info[18]) == 1       #simulation_type : PI_test
             
             self.control_signals=[self.hyperparam[0]*self.hyperparam[1],2*self.hyperparam[7]]
             self.neur = [[self.control_signals[0]*self.redundance[0],self.number_actuators],
@@ -96,6 +96,10 @@ class SNN_complete_train_test:
         
             
     def config_environment(self,rudder_ctrl,sails_ctrl):
+        '''
+            el metodo esta bien, pero quiero cambiarlo y poner 
+            este codigo en config_SNN_train y config_SNN_test
+        '''
         
         self.sail_env = env.sailboat_environment(rudder_ctrl = rudder_ctrl, sail_ctrl = sails_ctrl,
                                                  vmax = self.vmax, vmin = self.vmin, 
@@ -130,7 +134,7 @@ class SNN_complete_train_test:
                              wm = self.Pmin, n = self.step, codify = self.codify, 
                              maximum = self.max_freq, minimun = self.min_freq)
         
-        self.config_environment(rudder_ctrl = rudder_ctrl, sails_ctrl = sails_ctrl)
+        self.config_environment(rudder_ctrl = rudder_ctrl, sails_ctrl = sails_ctrl) #quiero cambiaarlo
         
     def config_SNN_test(self):
         
@@ -138,11 +142,12 @@ class SNN_complete_train_test:
         sails_ctrl = SNN.spiking_neuron(name = self.files_names[1])
         rudder_ctrl.load_SNN(path=self.direction,learning = not self.test)
         sails_ctrl.load_SNN(path=self.direction,learning = not self.test)
-        self.config_environment(rudder_ctrl = rudder_ctrl, sails_ctrl = sails_ctrl)
+        self.config_environment(rudder_ctrl = rudder_ctrl, sails_ctrl = sails_ctrl) #quiero cambiaarlo
         
     def train_SNN(self):
         
-        self.change_simulation_type(2)
+        self.change_simulation_type(2) #quiero quitarlo
+        #self.test = False cambio que quiro hacer
         self.config_SNN_train()    
         self.sail_env.set_database(db_name = 'Train_'+str(self.permutation), path = self.direction, 
                                    structure = ['scenario','state','reward_rudder',
@@ -169,7 +174,8 @@ class SNN_complete_train_test:
         return fail
         
     def test_SNN(self):
-        self.change_simulation_type(1)
+        self.change_simulation_type(1) #quiero quitarlo
+        #self.test = True #cambio que quiro hacer
         self.config_SNN_test()
         self.sail_env.set_database(db_name = 'Test_'+str(self.permutation), path = self.direction, 
                                    structure = ['state','wind','x','y','speed',
@@ -194,7 +200,8 @@ class SNN_complete_train_test:
         
                     
     def test_PI(self):
-        self.change_simulation_type(1)
+        self.change_simulation_type(1) #quiero quitarlo
+        #self.test = True #cambio que quiro hacer
         self.config_SNN_test()
         self.sail_env.set_database(db_name = 'TestPI', path = self.direction, 
                                    structure = ['state','wind','x','y','speed',
@@ -212,7 +219,8 @@ class SNN_complete_train_test:
         self.p.write_control_action([0,0,0,1000])
         
     def test_Viel2019(self):
-        self.change_simulation_type(1)
+        self.change_simulation_type(1) #quiero quitarlo
+        #self.test = True #cambio que quiro hacer
         self.config_SNN_test()
         self.sail_env.set_database(db_name = 'TestViel2019', path = self.direction, 
                                    structure = ['state','wind','x','y','speed',
@@ -236,6 +244,13 @@ class SNN_complete_train_test:
         self.sail_env.file_number = number
         
     def change_simulation_type(self, type_simulation):
+        '''
+            esta funcion no sirve para nada, ya que lo unico que hace es modificar 
+            self.PI_test, que no vuelve a ser usado y para los test, test_viel2019
+            y PI_test usa como type_simulation = 1 por lo tanto podria cambiar
+            esta funcion solo teniendo self_test = 1  cuando es un test y 0 cuando
+            no lo es si otras cosas no dependen de type_simulation 
+        '''
         
         if type_simulation == 0:
             self.PI_test = True
@@ -246,10 +261,10 @@ class SNN_complete_train_test:
         else:
             self.test = False
             self.PI_test = False
-            
+    
     def failure(self,name,number):
         fail = False
-        if self.sail_env.base.num_data>number:
+        if self.sail_env.base.ID >number:
             file = open(self.direction+'/data_result/'+name+'.csv', 'w')
             file.write('fail')
             file.close()
