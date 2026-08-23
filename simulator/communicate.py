@@ -5,6 +5,7 @@ import serial
 
 serial_name = '/'
 
+
 # Absolute route of the port, name of port, side of communication, timeout of readline
 def serial_initialization(route, port, times):
     lecture = True
@@ -30,16 +31,15 @@ def write_data(data, order):
 
 
 def read_data():
-    read_correct = True
     global serial_name
     try:
-        data = serial_name.readline()
-        data = data.decode('utf-8')
-        if data == '': raise Exception
-        data = data_format(data[0:-1])
+        data = serial_name.readline().decode('utf-8')
+        print("RAW DATA:", repr(data))
+        if data == '': return False, {} 
+        data = data_format(data[:-1])
+        return True, data
     except:
-        read_correct = False
-    return read_correct, data
+        return False, {}
 
 
 def data_format(data_read):
@@ -48,3 +48,4 @@ def data_format(data_read):
     for i in range(len(d2)):
         if i % 2 != 0: data[d2[i - 1]] = float(d2[i])
     return data
+
