@@ -191,7 +191,7 @@ def controller():
 	    info.append(round(wind_dir,0)) 
             datos={'S1': x1, 'S2': y1, 'S3': x2, 'S4': y2, 'S5': info[0], 'S6': info[1], 'S7': info[2], 'S8': info[3]}
             order = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8']
-            if not cm.write_data(datos, order):
+            if not cm.write_data(datos, order, 0x01):
                 rospy.loginfo("No se pudo escribir en el puerto")
             else:
                 [band,recibe] = cm.read_data()

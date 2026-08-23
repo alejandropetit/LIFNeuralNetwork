@@ -2,6 +2,7 @@
 # license removed for brevity
 
 import serial
+import struct
 
 serial_name = '/'
 
@@ -17,35 +18,66 @@ def serial_initialization(route, port, times):
     return lecture
 
 
-def write_data(data, order):
+def write_data(data, order, message_type):
     write_correct = True
-    data_send = ''
+    data_send = b''
     global serial_name
-    try:
-        for key in order: data_send = data_send + key + 'x' + str(data[key]) + 'x'
-        data_send = data_send + '\n'
-        serial_name.write(data_send.encode('utf-8'))
+    try: 
+        for key in order: data_send += struct.pack('<f', data[key])
+        packet = struct.pack('<BBB', 0xAA, message_type, len(data_send))
+        packet += data_send
+
+        serial_name.write(packet)
     except:
         write_correct = False
     return write_correct
 
-
 def read_data():
     global serial_name
+
     try:
-        data = serial_name.readline().decode('utf-8')
-        print("RAW DATA:", repr(data))
-        if data == '': return False, {} 
-        data = data_format(data[:-1])
+        header = serial_name.read(3)
+
+        if len(header) != 3:
+            return False, {}
+        
+        packet_header, message_type, data_length = struct.unpack('<BBB', header)
+
+        if packet_header != 0xAA:
+            return False, {}
+
+        if message_type == 0x01 and data_length != 32:
+            return False, {}
+
+        if message_type == 0x02 and data_length != 16:
+            return False, {}
+
+        data = serial_name.read(data_length)
+        
+        if len(data) != data_length:
+            return False, {}
+
+        data = data_format(data, message_type)
+
         return True, data
     except:
         return False, {}
 
 
-def data_format(data_read):
+def data_format(data_read, message_type):
     data = {}
-    d2 = data_read.split('x')
-    for i in range(len(d2)):
-        if i % 2 != 0: data[d2[i - 1]] = float(d2[i])
+
+    if message_type == 0x01:
+        order = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8']
+    elif message_type == 0x02:
+        order = ['A1', 'A2', 'A3', 'A4']
+    else:
+        return {}
+
+    for i, key in enumerate(order):
+        start = i * 4
+        value = struct.unpack('<f', data_read[start:start + 4])[0]
+        data[key] = value
+
     return data
 
