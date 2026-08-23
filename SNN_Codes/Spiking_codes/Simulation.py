@@ -42,7 +42,8 @@ class serial_port:
         if self.j:
             datos={'A1' : control_action[0], 'A2' : control_action[1], 
                    'A3' : control_action[2], 'A4' : control_action[3]}
-            band=cm.write_data(datos)
+            order = ['A1', 'A2', 'A3', 'A4']
+            band=cm.write_data(datos, )
 
         return band
 

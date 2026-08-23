@@ -5,7 +5,6 @@ import serial
 
 serial_name = '/'
 
-
 # Absolute route of the port, name of port, side of communication, timeout of readline
 def serial_initialization(route, port, times):
     lecture = True
@@ -17,12 +16,12 @@ def serial_initialization(route, port, times):
     return lecture
 
 
-def write_data(data):
+def write_data(data, order):
     write_correct = True
     data_send = ''
     global serial_name
     try:
-        for key in data: data_send = data_send + key + 'x' + str(data[key]) + 'x'
+        for key in order: data_send = data_send + key + 'x' + str(data[key]) + 'x'
         data_send = data_send + '\n'
         serial_name.write(data_send.encode('utf-8'))
     except:
