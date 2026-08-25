@@ -4,7 +4,6 @@
 import serial
 import struct
 import os
-from typing import Tuple, Dict, Any, Optional
 
 class SerialManager:
 
@@ -22,7 +21,7 @@ class SerialManager:
             self.connection = serial.Serial(port_path, timeout=timeout)
             return True
         except serial.SerialException as e:
-            print(f"Error abriendo puerto serial {port_path}: {e}")
+            print("Error abriendo puerto serial {}: {}".format(port_path, e))
             return False
 
     def write_data(self, data, order, message_type):
@@ -35,7 +34,7 @@ class SerialManager:
             self.connection.write(header + payload)
             return True
         except (KeyError, struct.error, serial.SerialException) as e:
-            print(f"Error escribiendo datos: {e}")
+            print("Error escribiendo datos: {}".format(e))
             return False
 
     def read_data(self):
@@ -46,7 +45,7 @@ class SerialManager:
                 byte = self.connection.read(1)
                 if not byte:
                     return False, {}
-                if byte[0] == 0xAA:
+                if byte == b'\xAA':
                     break
             metadata = self.connection.read(2)
             if len(metadata) < 2:
@@ -66,9 +65,9 @@ class SerialManager:
                 return False, {}
 
             float_count = len(keys)
-            values = struct.unpack(f'<{float_count}f', payload)
+            values = struct.unpack('<{}f'.format(float_count), payload)
 
             return True, dict(zip(keys, values))
         except (struct.error, serial.SerialException) as e:
-                    print(f"Error en lectura: {e}")
-                    return False, {}
+            print("Error en lectura: {}".format(e))
+            return False, {}
