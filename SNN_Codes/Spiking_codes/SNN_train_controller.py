@@ -11,7 +11,7 @@ class SNN_complete_train_test:
     port_name='interface_1'
     direction = '/home/nelson/Documentos/Ubuntu_master/SNN_Codes/Spiking_codes'
     timeout=15
-    p = sp.serial_port(direction, port_name, timeout)
+    p = sp.Serial_Port(direction, port_name, timeout)
     config_file = 'config.txt'
     
     # Error ranges for each variable[0,1] and pitch range
