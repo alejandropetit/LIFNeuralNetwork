@@ -17,6 +17,8 @@ from gazebo_msgs.msg import ModelState
 from gazebo_msgs.srv import SetModelState
 from tf.transformations import quaternion_from_euler
 
+serial_mgr = cm.SerialManager()
+
 initial_pose = Odometry()
 target_pose = Odometry()
 rate_value = 2   # Period of saving data
@@ -144,6 +146,13 @@ def controller():
     port_name='interface_2'
     direction= '/home/nelson/Documentos/Ubuntu_master/SNN_Codes/Spiking_codes'
     timeout=15
+
+    if not serial_mgr.connection or not serial_mgr.connection.is_open:
+        if not serial_mgr.initialize(direction, port_name, timeout):
+            rospy.logerr("No se pudo abrir el puerto serial.")
+            return 0, 0, 0
+
+
     rudder_angle=0
     sail_angle = 1
     sail_angle_2 = 1
@@ -183,18 +192,17 @@ def controller():
     # Send all the position sensors information to controller in python 3
     if not save_data or counter >= (rate_value // control_rate):
         try:
-	    cm.serial_initialization(direction,port_name,timeout)
-	    info=[]
-	    info.append(round(math.degrees(euler[0]),0)) 
-	    info.append(round(math.degrees(euler[1]),0)) 
-	    info.append(round(math.degrees(-current_heading),0)) 
-	    info.append(round(wind_dir,0)) 
+            info=[]
+            info.append(round(math.degrees(euler[0]),0)) 
+            info.append(round(math.degrees(euler[1]),0)) 
+            info.append(round(math.degrees(-current_heading),0)) 
+            info.append(round(wind_dir,0)) 
             datos={'S1': x1, 'S2': y1, 'S3': x2, 'S4': y2, 'S5': info[0], 'S6': info[1], 'S7': info[2], 'S8': info[3]}
             order = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8']
-            if not cm.write_data(datos, order, 0x01):
+            if not serial_mgr.write_data(datos, order, message_type=0x01):
                 rospy.loginfo("No se pudo escribir en el puerto")
             else:
-                [band,recibe] = cm.read_data()
+                band, recibe = serial_mgr.read_data()
 	        if band: 
                     result_py3=recibe['A4']
                     rudder_angle=recibe['A1']
