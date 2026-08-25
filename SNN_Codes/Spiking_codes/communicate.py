@@ -14,9 +14,9 @@ class SerialManager:
     }
 
     def __init__(self):
-        self.connection: Optional[serial.Serial] = None
+        self.connection = None
 
-    def initialize(self, route: str, port: str, timeout: float) -> bool:
+    def initialize(self, route, port, timeout):
         port_path = os.path.join(route, port)
         try:
             self.connection = serial.Serial(port_path, timeout=timeout)
@@ -25,7 +25,7 @@ class SerialManager:
             print(f"Error abriendo puerto serial {port_path}: {e}")
             return False
 
-    def write_data(self, data: Dict[str, float], order: list, message_type: int) -> bool:
+    def write_data(self, data, order, message_type):
         if not self.connection or not self.connection.is_open:
             return False
         try:
@@ -38,7 +38,7 @@ class SerialManager:
             print(f"Error escribiendo datos: {e}")
             return False
 
-    def read_data(self) -> Tuple[bool, Dict[str, float]]:
+    def read_data(self):
         if not self.connection or not self.connection.is_open:
             return False, {}
         try:
@@ -66,7 +66,7 @@ class SerialManager:
                 return False, {}
 
             float_count = len(keys)
-            values = struct.unpack(f'<{float_count}', payload)
+            values = struct.unpack(f'<{float_count}f', payload)
 
             return True, dict(zip(keys, values))
         except (struct.error, serial.SerialException) as e:
