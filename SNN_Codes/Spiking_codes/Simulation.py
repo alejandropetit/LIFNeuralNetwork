@@ -47,8 +47,6 @@ class SerialPort:
             'A4' : control_action[3],
         }
 
-        order = ['A1', 'A2', 'A3', 'A4']
-
-        return self.manager.write_data(datos, order, message_type=0x02)
+        return self.manager.write_data(datos, message_type=0x02)
                 
 

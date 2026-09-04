@@ -24,12 +24,13 @@ class SerialManager:
             print("Error abriendo puerto serial {}: {}".format(port_path, e))
             return False
 
-    def write_data(self, data, order, message_type):
+    def write_data(self, data, message_type):
         if not self.connection or not self.connection.is_open:
             return False
         try:
-            payload = b''.join(struct.pack('<f', data[key]) for key in order)
-            header = struct.pack('<BBB', 0xAA, message_type, len(payload))
+            keys = self.ORDER_MAP[message_type][1]
+            payload = b''.join(struct.pack('<f', data[key]) for key in keys)
+            header = struct.pack('<BB', 0xAA, message_type)
 
             self.connection.write(header + payload)
             return True
@@ -47,18 +48,18 @@ class SerialManager:
                     return False, {}
                 if byte == b'\xAA':
                     break
-            metadata = self.connection.read(2)
-            if len(metadata) < 2:
+
+            type_byte = self.connection.read(1)
+
+            if len(type_byte) != 1:
                 return False, {}
 
-            msg_type, length = struct.unpack('<BB', metadata)
+            msg_type = struct.unpack('<B', type_byte)[0]                
 
             if msg_type not in self.ORDER_MAP:
                 return False, {}
 
-            expected_length, keys = self.ORDER_MAP[msg_type]
-            if length != expected_length:
-                return False, {}
+            length, keys = self.ORDER_MAP[msg_type]
 
             payload = self.connection.read(length)
             if len(payload) != length:
