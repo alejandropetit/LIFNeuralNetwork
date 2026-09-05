@@ -15,10 +15,15 @@ class SerialManager:
     def __init__(self):
         self.connection = None
 
-    def initialize(self, route, port, timeout):
+    def initialize(self, route, port, timeout, baudrate=115200):
         port_path = os.path.join(route, port)
         try:
-            self.connection = serial.Serial(port_path, timeout=timeout)
+            self.connection = serial.Serial(port_path,
+                                            baudrate=baudrate,
+                                            bytesize=serial.EIGHTBITS,
+                                            parity=serial.PARITY_NONE,
+                                            stopbits=serial.STOPBITS_ONE,
+                                            timeout=timeout)
             return True
         except serial.SerialException as e:
             print("Error abriendo puerto serial {}: {}".format(port_path, e))
