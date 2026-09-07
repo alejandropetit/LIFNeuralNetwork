@@ -7,9 +7,30 @@ import os
 
 class SerialManager:
 
-    ORDER_MAP = {
-        0x01: (32, ['S1','S2','S3','S4','S5','S6','S7','S8']),
-        0x02: (16, ['A1','A2','A3','A4'])
+    MESSAGE_FORMAT = {
+        0x01: {
+            'keys': ['S1','S2','S3','S4','S5','S6','S7','S8'],
+            'format': {
+                'S1': ('<i', 2**6),
+                'S2': ('<i', 2**6),
+                'S3': ('<h', 2**14),
+                'S4': ('<h', 2**14),
+                'S5': ('<h', 1),
+                'S6': ('<h', 1),
+                'S7': ('<h', 1),
+                'S8': ('<h', 1),
+            }
+        },
+
+        0x02: {
+            'keys': ['A1','A2','A3','A4'],
+            'format': {
+                'A1': ('<h', 1),
+                'A2': ('<h', 1),
+                'A3': ('<h', 1),
+                'A4': ('<h', 1),
+            }
+        }
     }
 
     def __init__(self):
@@ -29,12 +50,16 @@ class SerialManager:
             print("Error abriendo puerto serial {}: {}".format(port_path, e))
             return False
 
+
+
     def write_data(self, data, message_type):
         if not self.connection or not self.connection.is_open:
             return False
         try:
-            keys = self.ORDER_MAP[message_type][1]
-            payload = b''.join(struct.pack('<f', data[key]) for key in keys)
+            message = self.MESSAGE_FORMAT[message_type]
+            keys = message['keys']
+            formats = message['format']
+            payload = b''.join(struct.pack(formats[key][0], round(data[key]*formats[key][1])) for key in keys)
             header = struct.pack('<BB', 0xAA, message_type)
 
             self.connection.write(header + payload)
@@ -61,17 +86,31 @@ class SerialManager:
 
             msg_type = struct.unpack('<B', type_byte)[0]                
 
-            if msg_type not in self.ORDER_MAP:
+            if msg_type not in self.MESSAGE_FORMAT:
                 return False, {}
 
-            length, keys = self.ORDER_MAP[msg_type]
+            message = self.MESSAGE_FORMAT[msg_type]
+
+            keys = message['keys']
+            formats = message['format']
+
+            length = sum(
+                struct.calcsize(formats[key][0]) for key in keys
+            )
 
             payload = self.connection.read(length)
             if len(payload) != length:
                 return False, {}
 
-            float_count = len(keys)
-            values = struct.unpack('<{}f'.format(float_count), payload)
+            values = []
+            offset = 0
+            for key in keys:
+                fmt, scale = formats[key]
+                size = struct.calcsize(fmt)
+                raw_value = struct.unpack_from(fmt, payload, offset)[0]
+                value = raw_value / scale
+                values.append(value)
+                offset += size
 
             return True, dict(zip(keys, values))
         except (struct.error, serial.SerialException) as e:
