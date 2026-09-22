@@ -1,6 +1,8 @@
 import Simulation as sp
 import SNN_network as SNN
 import environment as env
+import os
+import json
 
 class SNN_complete_train_test:
     # Last values in config
@@ -13,7 +15,11 @@ class SNN_complete_train_test:
     timeout=15
     p = sp.SerialPort(direction, port_name, timeout)
     config_file = 'config.txt'
-    
+
+
+    ACTIVE_ROUTE = 'ruta_01_original'
+
+    ROUTES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'routes'))
     # Error ranges for each variable[0,1] and pitch range
     vmax=[]
     vmin=[]
@@ -93,6 +99,25 @@ class SNN_complete_train_test:
         except Exception as e:
             print("Error loading config file: ", e)
             raise
+
+
+
+
+
+    def load_route(route_name, route_name):
+        path = os.path.join(self.ROUTES_DIRECTORY, route_name + '.json')
+
+        with open(path, 'r') as file:
+            route = json.load(file)
+
+        if not isinstance(route, list) or len(route) < 2:
+            raise ValueError('La ruta debe contener al menos dos waypoints')
+
+        for waypoint in route:
+            if not isinstance(waypoint, list) or len(waypoint) != 3:
+                raise ValueError('Cada waypoint debe ser [x, y, tipo]')
+
+        return route
         
             
     def config_environment(self,rudder_ctrl,sails_ctrl):
@@ -177,6 +202,10 @@ class SNN_complete_train_test:
         self.change_simulation_type(1) #quiero quitarlo
         #self.test = True #cambio que quiro hacer
         self.config_SNN_test()
+        self.sail_env.waypoints = self.load_route(self.ACTIVE_ROUTE)
+        self.sail_env.initial_point = self.sail_env.waypoints[0][:]
+        self.sail_env.state = 0
+        self.sail_env.min_distance = 2.0
         self.sail_env.set_database(db_name = 'Test_'+str(self.permutation), path = self.direction, 
                                    structure = ['state','wind','x','y','speed',
                                                 'heeling','rudder','sail'])
