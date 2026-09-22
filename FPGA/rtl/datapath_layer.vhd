@@ -11,7 +11,6 @@ entity datapath_layer is
         int_width   : natural;
         frac_width  : natural;
         in_size     : positive;
-        step_size   : positive := in_size + 3;
         num_neurons : positive;
         decay_option: decay_option_t;
         beta        : real;
@@ -22,9 +21,9 @@ entity datapath_layer is
         clk            : in  STD_LOGIC;
         reset          : in  STD_LOGIC;
         layer_in       : in  STD_LOGIC_VECTOR(in_size-1 downto 0);
+        valid          : in  STD_LOGIC;
         current_spike  : in  STD_LOGIC_VECTOR(in_size-1 downto 0);
         weight_addr    : in  STD_LOGIC_VECTOR(clog2(in_size)-1 downto 0);
-        cnt_step       : in  STD_LOGIC_VECTOR(clog2(step_size)-1 downto 0);
         state          : in  state_type;
         layer_out      : out STD_LOGIC_VECTOR (num_neurons-1 downto 0)
     );
@@ -32,10 +31,9 @@ end datapath_layer;
 
 architecture Behavioral of datapath_layer is
     constant width           : positive := int_width + frac_width;
-    constant mem_depth       : integer := 1024;
-    constant neurons_per_mem : integer := 4;
+    constant neurons_per_mem : integer := 1;
     constant num_groups      : integer :=  (num_neurons + neurons_per_mem -1)/neurons_per_mem;
-    signal   mem_addr        : STD_LOGIC_VECTOR(clog2(mem_depth)-1 downto 0);
+    signal   mem_addr        : STD_LOGIC_VECTOR(clog2(in_size)-1 downto 0);--cambio
     signal   decay_sig       : SFIXED(int_width-1 downto -frac_width);
 begin
 
@@ -49,7 +47,7 @@ begin
         weight_inst: entity work.weight_unit 
         generic map(
             width     => width*neurons_per_mem,
-            depth     => mem_depth,
+            depth     => in_size,--cambio
             init_addr => init_addr,
             in_size   => in_size,
             mem_file  => mem_file
@@ -82,11 +80,11 @@ begin
                     clk           => clk,
                     reset         => reset,
                     state         => state,
+                    valid         => valid,
                     current_spike => current_spike,
                     weight        => weight(width*(i+1)-1 downto width*i),
                     spike_in      => layer_in,
                     spike_out     => layer_out(neuron_idx),
-                    cnt_step      => cnt_step,
                     decay_sig     => decay_sig
                 );                  
             end generate;
@@ -102,7 +100,7 @@ begin
             if rising_edge(clk) then
                 if reset = '1' then
                     former_spike <= '1';
-                elsif state = OUTPUT then
+                elsif state = OUTPUT and valid = '1' then
                     former_spike <= or(layer_in);
                     if former_spike = '1' then
                         src_a <= beta_sig;

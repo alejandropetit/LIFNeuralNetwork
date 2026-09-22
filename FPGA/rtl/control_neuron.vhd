@@ -7,18 +7,17 @@ use WORK.NEURON_PACKAGE.ALL;
 entity control_neuron is
 generic( 
     in_size      : positive; -- number of inputs to the layer
-    step_size    : positive := in_size + 3; -- duration of a step
     decay_option : decay_option_t; -- selects the accumulation decay type
-    refrac       : natural:=4  -- duration of the refractory period
+    refrac       : natural:=5  -- duration of the refractory period
 );
 Port ( 
     clk             :  in   STD_LOGIC; -- system clock
     reset           :  in   STD_LOGIC; -- active-high reset
+    valid           :  in   STD_LOGIC;
     zero            :  in   STD_LOGIC; -- asserted when the membrane voltage is zero
     spike           :  in   STD_LOGIC; -- Spike will be generated on the next clock cycle
     spike_out       :  in   STD_LOGIC; -- Current output spike 
     spike_in        :  in   STD_LOGIC_VECTOR(in_size-1 downto 0); -- input spike vector
-    cnt_step        :  in   STD_LOGIC_VECTOR(clog2(step_size)-1 downto 0); -- step counter
     current_spike   :  in   STD_LOGIC_VECTOR(in_size-1 downto 0); -- spike currently being processed
     state           :  in   state_type; -- current layer state
     reset_out_spike :  out  STD_LOGIC; -- reset for output spike register
@@ -32,7 +31,7 @@ Port (
 end control_neuron;
 
 architecture Behavioral of control_neuron is
-    signal cnt_refrac            : unsigned( clog2(refrac)-1 downto 0 ) := (others => '0');
+    signal cnt_refrac            : unsigned( clog2(refrac+1)-1 downto 0 ) := (others => '0');
     signal ctrl_state            : STD_LOGIC;
     signal control               : STD_LOGIC_VECTOR(6 downto 0);
     signal no_input_voltage_zero : boolean;
@@ -40,13 +39,12 @@ architecture Behavioral of control_neuron is
     signal no_input_weight_state : boolean;
     signal no_input              : boolean;
     signal neuron_state          : state_type;
-    constant CTRL_INPUT          : STD_LOGIC_VECTOR(6 downto 0) := "0010000";
+    constant CTRL_INPUT          : STD_LOGIC_VECTOR(6 downto 0) := "1010000";
     constant CTRL_DECAY          : STD_LOGIC_VECTOR(6 downto 0) := "0000011";
 begin
     
     
     no_input <= spike_in = (spike_in'range => '0');
-    
     no_input_voltage_zero <= (zero = '1') and no_input;
     refractory_active     <= (spike_out = '0') and (cnt_refrac /= 0);
     no_input_weight_state <= (zero = '0') and no_input and (state = WEIGHT);
@@ -58,12 +56,14 @@ begin
     end generate;
     
     
-    neuron_state <= state when ctrl_state = '0' else INPUT; 
+    neuron_state <= state when ctrl_state = '0' and valid = '1' else INPUT; 
 
 --Counters   
     process(clk) begin
         if rising_edge(clk) then
-            if unsigned(cnt_step) = step_size-1 then
+            if reset = '1' then
+                cnt_refrac <= (others => '0');    
+            elsif valid = '1' and state = OUTPUT then
                 if spike = '1' then
                     cnt_refrac <= to_unsigned(refrac, cnt_refrac'length);
                 elsif cnt_refrac > 0 then

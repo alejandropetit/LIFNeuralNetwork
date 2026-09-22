@@ -10,7 +10,6 @@ entity lif_neuron is
         int_width  : natural; -- number of integer bits
         frac_width : natural; -- number of fractional bits 
         in_size    : positive; -- number of inputs to the layer
-        step_size  : positive:= in_size + 3; -- duration of a step
         beta       : real; -- membrane decay factor 
         Vth        : real; -- spike generation threshold
         decay_option: decay_option_t -- Selects how membrane decay is computed
@@ -18,10 +17,10 @@ entity lif_neuron is
     Port ( 
         clk            : in  STD_LOGIC; -- system clock
         reset          : in  STD_LOGIC; -- active-high reset
+        valid          : in  STD_LOGIC;
         weight         : in  STD_LOGIC_VECTOR(width-1 downto 0); -- synaptic weight corresponding to the current input spike
         spike_in       : in  STD_LOGIC_VECTOR(in_size-1 downto 0); -- input spike vector
         current_spike  : in  STD_LOGIC_VECTOR(in_size-1 downto 0); -- spike currently being processed
-        cnt_step       : in  STD_LOGIC_VECTOR(clog2(step_size)-1 downto 0); -- step counter
         decay_sig      : in  SFIXED(int_width-1 downto -frac_width); -- accumulated membrane decay factor
         state          : in  state_type; --current layer FSM state  
         spike_out      : out STD_LOGIC -- registered output spike
@@ -78,6 +77,7 @@ begin
     port map(
         clk             => clk,
         reset           => reset,
+        valid           => valid,
         spike_in        =>spike_in,
         spike           => spike,
         spike_out       => spike_out,
@@ -90,7 +90,6 @@ begin
         en_out_u        => en_out_u,
         en_acc          => en_acc,  
         src_ctrl        => src_ctrl,
-        zero            => zero, 
-        cnt_step        => cnt_step
+        zero            => zero 
     ); 
 end Behavioral;

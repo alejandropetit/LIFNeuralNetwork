@@ -61,13 +61,13 @@ begin
                 else
                     nextstate <= DATA;
                 end if;
-            when STOP =>
-                if dne = '1' then
+	    when STOP =>
+                if center = '1' then
                     nextstate <= IDLE;
                 else
                     nextstate <= STOP;
-                end if;      
-        end case;
+                end if;   
+            end case;
     
     end process;
     
@@ -105,18 +105,13 @@ begin
                         if center = '1' then
                             RSR <= RxFF(1) & RSR(8 downto 1);    
                         end if;
-                    elsif state = STOP then
+		            elsif state = STOP then
                         if center = '1' then
-                            stop_valid <= RxFF(1);
-                        end if;
-                        
-                        if dne = '1' then
-                            if stop_valid = '1' then
-                                RDR <= RSR(8 downto 1);
-                                stop_valid <= '0';
+                            if RxFF(1) = '1' then
+                                RDR  <= RSR(8 downto 1);
                                 done <= '1';
-                            end if;
-                        end if;
+        		            end if;
+                        end if;      
                     end if;
                 end if;
             end if;    

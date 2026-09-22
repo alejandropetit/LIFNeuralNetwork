@@ -18,7 +18,7 @@ generic (
 Port (
     clk        : in  STD_LOGIC;
     reset      : in  STD_LOGIC;
-    we         : in  STD_LOGIC_VECTOR(0 downto 0);
+    we         : in  STD_LOGIC;
     read_addr  : in  STD_LOGIC_VECTOR(clog2(depth)-1 downto 0);
     write_addr : in  STD_LOGIC_VECTOR(clog2(depth)-1 downto 0);
     write_data : in  STD_LOGIC_VECTOR(width-1 downto 0);
@@ -33,7 +33,7 @@ architecture inferred_sdpram of memory is
         in_size     : in integer;
         init_addr   : in integer
     ) return RamType is
-        file RamFile : text is in RamFileName;
+        file RamFile : text open read_mode is RamFileName;
         variable RamFileLine : line;
         variable RAM         : RamType;
     begin
@@ -63,7 +63,7 @@ begin
                 read_data <= RAM(to_integer(unsigned(read_addr)));
             end if;   
             
-            RAM(to_integer(unsigned(write_addr))) <= write_data when (and we) = '1';
+            RAM(to_integer(unsigned(write_addr))) <= write_data when we = '1';
         end if;
     end process;
 end inferred_sdpram;
@@ -77,9 +77,9 @@ architecture inferred_sprom of memory is
         in_size     : in integer;
         init_addr   : in integer
     ) return RamType is
-        file RamFile : text is in RamFileName;
+        file RamFile : text open read_mode is RamFileName;
         variable RamFileLine : line;
-        variable RAM         : RamType;
+        variable RAM         : RamType := (others => (others => '0'));
     begin
         for j in 0 to init_addr-1 loop
             readline(RamFile, RamFileLine);
@@ -88,12 +88,12 @@ architecture inferred_sprom of memory is
         for i in 0 to in_size-1 loop
             if not endfile(RamFile) then
                 readline(RamFile, RamFileLine);
-                hread(RamFileLine, RAM(i));
+                bread(RamFileLine, RAM(i));
             end if;
         end loop;
         return RAM;
     end function;
-    signal RAM : RamType := InitRamFromFile("../memory/" & mem_file, in_size, init_addr);
+    signal RAM : RamType := InitRamFromFile("../memory/" & mem_file, in_size, init_addr);--"../memory/" &
     attribute ram_style : string;
     attribute ram_style of RAM : signal is "block";
 begin

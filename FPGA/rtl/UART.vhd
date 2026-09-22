@@ -7,8 +7,8 @@ entity UART is
         oversample: positive := 16;
         clk_freq: positive := 50000000;
         baud_rate: positive := 115200;
-        tx_fifo_depth: positive := 16;
-        rx_fifo_depth: positive := 16
+        tx_fifo_depth: positive := 32;
+        rx_fifo_depth: positive := 32
     );
     port(
         clk : in STD_LOGIC;

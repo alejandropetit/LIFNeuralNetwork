@@ -6,12 +6,13 @@ use WORK.NEURON_PACKAGE.ALL;
 
 entity lif_network is
     generic(
-        int_width     : natural := 1;
-        frac_width    : natural := 9;
+        int_width     : natural := 3;
+        frac_width    : natural := 6;
         decay_option  : decay_option_t := DECAY_ACCUMULATE;
-        network_shape : int_array_t := (8,8);
-        beta          : real_array_t := (0 => 0.9900498337);
-        Vth           : real_array_t := (0 => 100.0)
+        network_shape : int_array_t := (24,1);
+        beta          : real_array_t := (0 => 0.9900498337);--(0 => 0.9900498337);
+        Vth           : real_array_t := (0 => 100.0);--(0 => 100.0)
+        mem_file      : string
     );
     Port (
         clk         : in  STD_LOGIC;
@@ -19,6 +20,7 @@ entity lif_network is
         valid       : in  STD_LOGIC;
         network_in  : in  STD_LOGIC_VECTOR(network_shape(network_shape'low) - 1 downto 0);
         ready       : out STD_LOGIC;
+        out_valid   : out STD_LOGIC;
         network_out : out STD_LOGIC_VECTOR(network_shape(network_shape'high) - 1 downto 0));
 end lif_network;
 
@@ -26,6 +28,7 @@ architecture Behavioral of lif_network is
 
      constant NUM_LAYERS      : positive := network_shape'length - 1;
      signal weights_done      : STD_LOGIC;
+     signal valid_reg         : STD_LOGIC_VECTOR(NUM_LAYERS - 1 downto 0);
      signal weight_accum_done : STD_LOGIC_VECTOR(NUM_LAYERS - 1 downto 0);
      signal output_state      : STD_LOGIC_VECTOR(NUM_LAYERS - 1 downto 0);
      signal en_front          : STD_LOGIC;
@@ -53,13 +56,16 @@ begin
         network_shape => network_shape,
         decay_option  => decay_option,
         beta          => beta,
-        Vth           => Vth
+        Vth           => Vth,
+        mem_file      => mem_file
     )
     port map(
         clk               => clk,
         reset             => reset,
         en_front          => en_front,
         en_back           => en_back,
+        out_valid         => out_valid,
+        valid_reg         => valid_reg,
         weights_done      => weights_done,
         network_in        => network_in,
         weight_accum_done => weight_accum_done,
@@ -76,6 +82,7 @@ begin
         reset             => reset,
         valid             => valid,
         weights_done      => weights_done,
+        valid_reg         => valid_reg,
         en_front          => en_front,
         en_back           => en_back,
         weight_accum_done => weight_accum_done,

@@ -36,7 +36,7 @@ begin
     port map (
         clk        => clk,
         reset      => reset,
-        we         => (others => '0'),
+        we         => '0',
         read_addr  => addr,
         write_addr => (others => '0'),
         write_data => din,
