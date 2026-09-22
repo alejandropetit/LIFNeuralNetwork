@@ -54,7 +54,7 @@ save_data = True
 
 ROUTES_DIRECTORY = '/home/nelson/Documentos/Ubuntu_master/routes'
 
-ACTIVE_ROUTE = 'cuadrado'
+ACTIVE_ROUTE = 'ruta_02_cuadrado'
 
 
 #ACTIVE_ROUTE = 'test'
