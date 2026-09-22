@@ -36,7 +36,7 @@ class SerialManager:
     def __init__(self):
         self.connection = None
 
-    def initialize(self, route, port, timeout, baudrate=115200):
+    def initialize(self, route, port, timeout, baudrate=9600):
         port_path = os.path.join(route, port)
         try:
             self.connection = serial.Serial(port_path,

@@ -52,10 +52,7 @@ save_data = True
 #    ],
 #}
 
-ROUTES_DIRECTORY = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    'routes'
-)
+ROUTES_DIRECTORY = '/home/nelson/Documentos/Ubuntu_master/routes'
 
 ACTIVE_ROUTE = 'cuadrado'
 
