@@ -17,7 +17,7 @@ class SNN_complete_train_test:
     config_file = 'config.txt'
 
 
-    ACTIVE_ROUTE = 'ruta_01_original'
+    ACTIVE_ROUTE = 'Test'
 
     ROUTES_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'routes'))
     # Error ranges for each variable[0,1] and pitch range
