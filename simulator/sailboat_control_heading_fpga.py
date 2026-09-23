@@ -31,30 +31,10 @@ rate_value = 2       # Frecuencia del loop cuando se guardan datos
 control_rate = 1     # Frecuencia del controlador
 save_data = True
 
-# La ruta vive completamente en este archivo.
-# Cada waypoint tiene la forma: [x, y, waypoint_type]
-
-#ROUTES = {
-#    'test': [
-#        [240, 100, 0],
-#        [233, 112, 0],
-#        [219, 112, 0],
-#        [212, 100, 0],
-#        [219, 87,  0],
-#        [233, 87,  0],
-#        [240, 100, 0],
-#        [247, 112, 0],
-#        [261, 112, 0],
-#        [268, 100, 0],
-#        [261, 87,  0],
-#        [247, 87,  0],
-#        [240, 100, 0],
-#    ],
-#}
 
 ROUTES_DIRECTORY = '/home/nelson/Documentos/Ubuntu_master/routes'
 
-ACTIVE_ROUTE = 'ruta_02_cuadrado'
+ACTIVE_ROUTE = 'Test'
 
 
 #ACTIVE_ROUTE = 'test'
