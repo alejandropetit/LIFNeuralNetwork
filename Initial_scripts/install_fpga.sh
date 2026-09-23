@@ -3,9 +3,7 @@
 mkdir -p /home/nelson/Documentos/Ubuntu_master
 cd /home/nelson/Documentos/Ubuntu_master
 git clone --no-checkout https://github.com/alejandropetit/LIFNeuralNetwork.git .
-git sparse-checkout init --cone
-git sparse-checkout set simulator SNN_Codes Initial_scripts routes
-git checkout
+
 
 cp /home/nelson/Documentos/Ubuntu_master/simulator/sailboat_control_heading_fpga.py /home/nelson/catkin_ws/src/usv_sim_lsa/usv_base_ctrl/scripts/sailboat_control_heading.py # usv_base_ctrl
 cp /home/nelson/Documentos/Ubuntu_master/simulator/foil_dynamics_plugin.cpp /home/nelson/catkin_ws/src/usv_sim_lsa/usv_dynamics/foil_dynamics_plugin/src/foil_dynamics_plugin.cpp 

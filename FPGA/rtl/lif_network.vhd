@@ -64,7 +64,6 @@ begin
         reset             => reset,
         en_front          => en_front,
         en_back           => en_back,
-        out_valid         => out_valid,
         valid_reg         => valid_reg,
         weights_done      => weights_done,
         network_in        => network_in,
@@ -85,6 +84,7 @@ begin
         valid_reg         => valid_reg,
         en_front          => en_front,
         en_back           => en_back,
+        out_valid         => out_valid,
         weight_accum_done => weight_accum_done,
         output_state      => output_state,
         ready             => ready

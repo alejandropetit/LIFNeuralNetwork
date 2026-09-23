@@ -42,13 +42,14 @@ begin
         end if;    
     end process;
     
-    process(clk) begin
+    process(clk)
+    begin
         if rising_edge(clk) then
             if reset = '1' then
                 valid_b <= '0';
             elsif en_back = '1' then
                 valid_b <= '1';
-            else
+            elsif en_front = '1' then
                 valid_b <= '0';
             end if;
         end if;

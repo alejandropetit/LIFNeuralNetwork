@@ -21,7 +21,6 @@ entity network_datapath is
         weights_done      : in  STD_LOGIC;
         network_in        : in  STD_LOGIC_VECTOR(network_shape(network_shape'low)-1 downto 0);
         valid_reg         : in  STD_LOGIC_VECTOR(network_shape'length - 2 downto 0);
-        out_valid         : out STD_LOGIC;
         weight_accum_done : out STD_LOGIC_VECTOR(network_shape'length-2 downto 0);
         output_state      : out STD_LOGIC_VECTOR(network_shape'length-2 downto 0);
         network_out       : out STD_LOGIC_VECTOR(network_shape(network_shape'high)-1 downto 0)
