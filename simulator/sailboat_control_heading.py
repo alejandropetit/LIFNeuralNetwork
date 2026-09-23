@@ -6,7 +6,6 @@ import math
 import tf
 import communicate as cm
 import text_file as db
-import SNNexperiment as SN
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Header
 from nav_msgs.msg import Odometry
@@ -18,20 +17,7 @@ from gazebo_msgs.msg import ModelState
 from gazebo_msgs.srv import SetModelState
 from tf.transformations import quaternion_from_euler
 
-
-permutation = 923
-direction = '/home/nelson/Documentos/Ubuntu_master/SNN_Codes/Spiking_codes'
-
 serial_mgr = cm.SerialManager()
-
-experiment = SN.SNNexperiment()
-
-# Generar la ruta de prueba
-experiment.train_scenario(test=True)
-experiment.reset_route()
-
-# Dataset
-experiment.set_database( db_name='Test_' + str(permutation), path=direction,structure=['ID','state','wind','x','y','speed','heeling','rudder','sail'])
 
 initial_pose = Odometry()
 target_pose = Odometry()
@@ -104,16 +90,16 @@ def talker_ctrl():
 
     while not rospy.is_shutdown():
         try:
-	        time_counter += (1.0/rate_value)
-	        if save_data and constant[0]!=constant[1]:
+	    time_counter += (1.0/rate_value)
+	    if save_data and constant[0]!=constant[1]:
                 base = db.text_files(new_file = True, file_name = db_name, structure = ['time','speed','wind','x','y'])  
-		        constant[0] = constant[1]
-		        time_counter = 0
-	        final = rudder_ctrl_msg()
-	        if not save_data or counter >= (rate_value // control_rate):
+		constant[0] = constant[1]
+		time_counter = 0
+	    final = rudder_ctrl_msg()
+	    if not save_data or counter >= (rate_value // control_rate):
                 pub_rudder.publish(final[0])
-	            pub_sail.publish(final[1])
-		        counter = 0
+	        pub_sail.publish(final[1])
+		counter = 0
                 #pub_sail_2.publish(final[2])
             pub_result.publish(result)
             pub_heading.publish(currentHeading)
@@ -122,9 +108,9 @@ def talker_ctrl():
             pub_spHeading.publish(spHeading)
             rate.sleep()
         except rospy.ROSInterruptException:
-	        rospy.logerr("ROS Interrupt Exception! Just ignore the exception!")
+	    rospy.logerr("ROS Interrupt Exception! Just ignore the exception!")
         except rospy.ROSTimeMovedBackwardsException:
-	        rospy.logerr("ROS Time Backwards! Just ignore the exception!")
+	    rospy.logerr("ROS Time Backwards! Just ignore the exception!")
 
 def reset_environment(yaw):
     q = quaternion_from_euler(0, 0, yaw)
@@ -157,7 +143,7 @@ def controller():
     global db_name
     global yaw_counter
 	
-    port_name='/dev/ttyUSB0'
+    port_name='interface_2'
     direction= '/home/nelson/Documentos/Ubuntu_master/SNN_Codes/Spiking_codes'
     timeout=15
 
@@ -177,7 +163,6 @@ def controller():
     y1 = initial_pose.pose.pose.position.y
     x2 = initial_pose.twist.twist.linear.x
     y2 = initial_pose.twist.twist.linear.y
-    speed = math.sqrt(x2**2+y2**2)####nuevo cambio
     quaternion = (initial_pose.pose.pose.orientation.x, initial_pose.pose.pose.orientation.y, initial_pose.pose.pose.orientation.z,initial_pose.pose.pose.orientation.w) 
     euler = tf.transformations.euler_from_quaternion(quaternion)
 
@@ -190,9 +175,6 @@ def controller():
     target_angle = -target_angle
     current_heading = math.radians(target_angle)
     currentHeading.data = current_heading
-    ###############################################
-
-
     ##############################################
     # Wind sensor processing and aconditionating
     x = rospy.get_param('/uwsim/wind/x')
@@ -203,145 +185,59 @@ def controller():
     wind_dir = angle_saturation(math.degrees(wind_dir))
     windDir.data = math.radians(angle_saturation(math.degrees(wind_dir)+180))
     #############################################
-    counter += 1
-
+    counter +=1	
     if save_data:
-        base.append_data([time_counter,speed,math.degrees(global_dir),x1,y1])
-
-    # =========================================================
-    # Ejecutar controlador según control_rate
-    # =========================================================
+	speed = math.sqrt(x2**2+y2**2)
+	base.append_data([time_counter,speed,math.degrees(global_dir),x1,y1])
+    # Send all the position sensors information to controller in python 3
     if not save_data or counter >= (rate_value // control_rate):
-
         try:
-            # =================================================
-            # Sensores
-            # =================================================
-            info = []
-
-            info.append(round(math.degrees(euler[0]), 0))          # roll
-            info.append(round(math.degrees(euler[1]), 0))          # pitch
-            info.append(round(math.degrees(-current_heading), 0))  # yaw
-            info.append(round(wind_dir, 0))                        # viento relativo
-
-
-             # =================================================
-             # Actualizar ruta
-             # =================================================
-            route_status = experiment.update_route(x1, y1)
-
-
-             # =================================================
-             # Fin de recorrido
-             # =================================================
-            if route_status == experiment.ROUTE_FINISHED:
-
-                rospy.loginfo("Recorrido finalizado")
-
-                rudder_angle = 0
-                sail_angle = 0
-                sail_angle_2 = 0
-
-                result.data = experiment.ROUTE_FINISHED
-
-                return (
-                     math.radians(rudder_angle),
-                     math.radians(sail_angle),
-                     math.radians(sail_angle_2)
-                 )
-
-
-             # =================================================
-             # Waypoint activo
-             # =================================================
-            desired_heading = experiment.desired_heading_cal(x1,y1)
-
-            next_waypoint_value = (
-                experiment.waypoints[
-                experiment.state + 1
-                ][2]
-            )
-
-
-             # =================================================
-             # Viento
-             # =================================================
-            real_wind_angle = experiment.angle_saturation(
-                ang=info[3] + info[2],
-                min_ang=-180,
-                max_ang=180
-            )
-
-            aparent_wind = experiment.aparent_wind_calc(
-                real_wind_angle=real_wind_angle,
-                sailboat_speed=speed,
-                yaw=info[2]
-            )
-
-
-             # =================================================
-             # Paquete FPGA
-             # =================================================
-            datos = {
-            'S1': info[0],               # roll / heeling
-            'S2': info[2],               # yaw
-            'S3': info[3],               # viento relativo
-            'S4': desired_heading,
-            'S5': aparent_wind,
-            'S6': speed,
-            'S7': next_waypoint_value
-            }
-
-
-             # =================================================
-             # Enviar a FPGA
-             # =================================================
-            if not serial_mgr.write_data(datos,message_type=0x01):
-                rospy.logerr(
-                    "No se pudo escribir en el puerto"
-                )
-
+            info=[]
+            info.append(round(math.degrees(euler[0]),0)) 
+            info.append(round(math.degrees(euler[1]),0)) 
+            info.append(round(math.degrees(-current_heading),0)) 
+            info.append(round(wind_dir,0)) 
+            datos={'S1': x1, 'S2': y1, 'S3': x2, 'S4': y2, 'S5': info[0], 'S6': info[1], 'S7': info[2], 'S8': info[3]}
+            if not serial_mgr.write_data(datos, message_type=0x01):
+                rospy.loginfo("No se pudo escribir en el puerto")
             else:
                 band, recibe = serial_mgr.read_data()
-
-                if band:
-                    rudder_angle = recibe['A1']
-                    sail_angle = recibe['A2']
-
-                    # Si ambas velas usan la misma salida
-                    sail_angle_2 = sail_angle
-
-
-                    # =========================================
-                    # Guardar paso
-                    # =========================================
-                    experiment.process_step(
-                        x=x1,
-                        y=y1,
-                        speed=speed,
-                        heeling=info[0],
-                        real_wind_angle=real_wind_angle,
-                        control_action=(rudder_angle,sail_angle)
-                    )
-
-        except Exception as e:
-            rospy.logerr(
-                "Error en controlador/serial: %s",
-                str(e)
-            )
+	        if band: 
+                    result_py3=recibe['A4']
+                    rudder_angle=recibe['A1']
+                    sail_angle=recibe['A2']
+                    sail_angle_2=recibe['A3']
+		    if result_py3 == 2:
+		        #reset_world()
+			reset_environment(math.radians(yaw_angles[yaw_counter]))
+	                result_py3=0
+		    elif result_py3 == 1000:
+			yaw_counter = 0
+			reset_environment(math.radians(yaw_angles[yaw_counter]))
+			result_py3=0
+		    elif result_py3 > 100:
+			yaw_counter += 1
+			reset_environment(math.radians(yaw_angles[yaw_counter]))
+			result_py3=0
+		    elif result_py3 > 2 and save_data:
+			db_name=db_name[0:len(db_name)-1]+str(int(result_py3-2))
+			constant[1] = result_py3
+			
+			
+        except:
+            rospy.loginfo("Error abriendo el puerto")
 
 
-        # =====================================================
-        # Salidas
-        # =====================================================
-        return (
-            math.radians(rudder_angle),
-            math.radians(sail_angle),
-            math.radians(sail_angle_2)
-        )
+        #############################################   
 
+        # Actualization of result
+        result.data = int(result_py3)
+        #############################################  
+        #Timon y vela
+        return math.radians(rudder_angle),math.radians(sail_angle),math.radians(sail_angle_2)
+    
     else:
-        return 0, 0, 0
+	return 0,0,0
 
 def rudder_ctrl_msg():
     msg = JointState()
@@ -368,7 +264,7 @@ if __name__ == '__main__':
     reset_environment(math.radians(yaw_angles[yaw_counter]))
 
     if not save_data:
-	    rate_value = control_rate
+	rate_value = control_rate
     try:
         talker_ctrl()
     except rospy.ROSInterruptException:
