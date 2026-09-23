@@ -104,7 +104,7 @@ class SNN_complete_train_test:
 
 
 
-    def load_route(route_name, route_name):
+    def load_route(self, route_name):
         path = os.path.join(self.ROUTES_DIRECTORY, route_name + '.json')
 
         with open(path, 'r') as file:
