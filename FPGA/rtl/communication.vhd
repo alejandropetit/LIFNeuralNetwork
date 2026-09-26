@@ -21,7 +21,7 @@ entity communication is
         
         ready_a: in STD_LOGIC;
         valid_a: out STD_LOGIC;
-        data_a: out STD_LOGIC_VECTOR(103 downto 0);
+        data_a: out STD_LOGIC_VECTOR(95 downto 0);
         
         ready_b: out STD_LOGIC;
         valid_b: in STD_LOGIC;

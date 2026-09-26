@@ -13,7 +13,7 @@ entity protocol is
         
         ready_a: in STD_LOGIC;
         valid_a: out STD_LOGIC;
-        data_a: out STD_LOGIC_VECTOR(103 downto 0);
+        data_a: out STD_LOGIC_VECTOR(95 downto 0);--(103 downto 0);
         
         ready_b: out STD_LOGIC;
         valid_b: in STD_LOGIC;
@@ -32,7 +32,7 @@ architecture Behavioral of protocol is
     constant ADDR_TX_DATA: STD_LOGIC_VECTOR(1 downto 0) := "00";
     constant ADDR_RX_DATA: STD_LOGIC_VECTOR(1 downto 0) := "01";
     
-    constant N_DATA1: natural := 13;
+    constant N_DATA1: natural := 12;
     constant N_SEND: natural := 6;
  
     constant BIT_TX_FULL  : natural := 0;
@@ -43,7 +43,7 @@ architecture Behavioral of protocol is
     signal N: natural;
     
     
-    signal DATA1: STD_LOGIC_VECTOR(103 downto 0);
+    signal DATA1: STD_LOGIC_VECTOR(95 downto 0);
     signal message: STD_LOGIC_VECTOR(47 downto 0);
 
 begin

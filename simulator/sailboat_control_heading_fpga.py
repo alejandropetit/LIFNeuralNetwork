@@ -66,6 +66,10 @@ counter = 0
 time_counter = 0.0
 base = None
 
+tiempo_inicio = None
+tiempo_fin = None
+pose_recibida = False
+
 
 # ============================================================
 # MANEJO INTERNO DE LA RUTA
@@ -164,8 +168,10 @@ route_manager = RouteManager(
 # ============================================================
 
 def get_pose(initial_pose_tmp):
-    global initial_pose
+    global initial_pose, pose_recibida
+
     initial_pose = initial_pose_tmp
+    pose_recibida = True
 
 
 def angle_saturation(angle):
@@ -197,6 +203,7 @@ def apparent_wind_angle(wind_x, wind_y, boat_vx_world, boat_vy_world):
 def reset_environment(yaw_rad):
     global state_msg
     global set_state
+    global tiempo_inicio, tiempo_fin, pose_recibida, time_counter
 
     q = quaternion_from_euler(0, 0, yaw_rad)
     initial = route_manager.route[0]
@@ -211,6 +218,11 @@ def reset_environment(yaw_rad):
     state_msg.pose.orientation.w = q[3]
 
     set_state(state_msg)
+
+    tiempo_inicio = None
+    tiempo_fin = None
+    time_counter = 0.0
+    pose_recibida = False    
 
 
 # ============================================================
@@ -230,6 +242,7 @@ def controller():
     global last_sail_action_deg
     global waypointDistance
     global waypointIndex
+    global tiempo_inicio, tiempo_fin
 
     # --------------------------------------------------------
     # 1. Abrir UART una sola vez
@@ -239,6 +252,18 @@ def controller():
             rospy.logerr('No se pudo abrir el puerto serial.')
             counter = 0
             return 0.0, 0.0
+
+    ahora = rospy.Time.now()
+
+    if not pose_recibida or ahora.to_sec() <= 0.0:
+        counter = 0
+        return 0.0, 0.0  # FPGA
+
+    if tiempo_inicio is None:
+        tiempo_inicio = ahora
+
+    instante = tiempo_fin if tiempo_fin is not None else ahora
+    time_counter = (instante - tiempo_inicio).to_sec()    
 
     # --------------------------------------------------------
     # 2. Leer estado del velero desde ROS
@@ -274,6 +299,14 @@ def controller():
     waypointIndex.data = route_manager.index
 
     if route_manager.finished:
+        if tiempo_fin is None:
+            tiempo_fin = ahora
+            time_counter = (tiempo_fin - tiempo_inicio).to_sec()
+
+            rospy.loginfo(
+                'RUTA COMPLETADA FPGA: %.3f segundos simulados',
+                time_counter
+            )
 
         counter = 0
         result.data = 1
@@ -321,7 +354,7 @@ def controller():
     # 5. Guardado opcional
     # --------------------------------------------------------
     counter += 1
-    time_counter += 1.0 / rate_value
+    #time_counter += 1.0 / rate_value
 
     if save_data and base is not None:
         base.append_data([time_counter,x_pos,y_pos,speed,pitch_deg,yaw_deg,relative_wind_deg,desired_heading_deg,apparent_wind_deg,route_manager.index,waypoint[0],waypoint[1],distance,last_rudder_action_deg,last_sail_action_deg])
@@ -338,19 +371,19 @@ def controller():
             'S3': relative_wind_deg,
             'S4': desired_heading_deg,
             'S5': apparent_wind_deg,
-            'S6': speed,
-            'S7': waypoint_type,
+            'S6': speed
+            #'S7': waypoint_type,
         }
 
         rospy.loginfo(
-            'TX FPGA: pitch=%.2f yaw=%.2f relWind=%.4f desired=%.4f appWind=%.2f speed=%.3f wp=%d',
+            'TX FPGA: pitch=%.2f yaw=%.2f relWind=%.4f desired=%.4f appWind=%.2f speed=%.3f', #wp=%d',
             datos['S1'],
             datos['S2'],
             datos['S3'],
             datos['S4'],
             datos['S5'],
             datos['S6'],
-            datos['S7']
+            #datos['S7']
         )
 
         try:

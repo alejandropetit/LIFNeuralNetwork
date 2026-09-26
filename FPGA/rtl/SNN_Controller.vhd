@@ -9,7 +9,7 @@ entity SNN_Controller is
         clk: in STD_LOGIC;
         reset: in STD_LOGIC;
         
-        data : in STD_LOGIC_VECTOR(103 downto 0);
+        data : in STD_LOGIC_VECTOR(95 downto 0);
         data_valid: in STD_LOGIC;
         data_ready: out STD_LOGIC;
         

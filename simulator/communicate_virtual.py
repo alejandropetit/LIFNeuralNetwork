@@ -1,149 +1,118 @@
+#!/usr/bin/env python
+# license removed for brevity
 
 import serial
 import struct
-
-serial_name = '/'
-
-
-# Absolute route of the port, name of port, side of communication, timeout of readline
-def serial_initialization(route, port, times):
-    lecture = True
-    try:
-        global serial_name
-        serial_name = serial.Serial(route + '/' + port, timeout=times)
-    except:
-        lecture = False
-    return lecture
-
-
-def write_data(data, order, message_type):
-    write_correct = True
-    data_send = b''
-    global serial_name
-    try: 
-        for key in order: data_send += struct.pack('<f', data[key])
-        packet = struct.pack('<BBB', 0xAA, message_type, len(data_send))
-        packet += data_send
-
-        serial_name.write(packet)
-    except:
-        write_correct = False
-    return write_correct
-
-
-def read_data():
-    global serial_name
-
-    try:
-        header = serial_name.read(3)
-
-        if len(header) != 3:
 import os
-from typing import Tuple, Dict, Any, Optional
 
 class SerialManager:
 
-    ORDER_MAP = {
-        0x01: (32, ['S1','S2','S3','S4','S5','S6','S7','S8']),
-        0x02: (16, ['A1','A2','A3','A4'])
+    MESSAGE_FORMAT = {
+        0x01: {
+            'keys': ['S1','S2','S3','S4','S5','S6','S7','S8'],
+            'format': {
+                'S1': ('<i', 2**6),
+                'S2': ('<i', 2**6),
+                'S3': ('<h', 2**14),
+                'S4': ('<h', 2**14),
+                'S5': ('<h', 1),
+                'S6': ('<h', 1),
+                'S7': ('<h', 1),
+                'S8': ('<h', 1),
+            }
+        },
+
+        0x02: {
+            'keys': ['A1','A2','A3','A4'],
+            'format': {
+                'A1': ('<h', 1),
+                'A2': ('<h', 1),
+                'A3': ('<h', 1),
+                'A4': ('<h', 1),
+            }
+        }
     }
 
     def __init__(self):
-        self.connection: Optional[serial.Serial] = None
+        self.connection = None
 
-    def initialize(self, route: str, port: str, timeout: float) -> bool:
+    def initialize(self, route, port, timeout, baudrate=115200):
         port_path = os.path.join(route, port)
         try:
-            self.connection = serial.Serial(port_path, timeout=timeout)
+            self.connection = serial.Serial(port_path,
+                                            baudrate=baudrate,
+                                            bytesize=serial.EIGHTBITS,
+                                            parity=serial.PARITY_NONE,
+                                            stopbits=serial.STOPBITS_ONE,
+                                            timeout=timeout)
             return True
         except serial.SerialException as e:
-            print(f"Error abriendo puerto serial {port_path}: {e}")
+            print("Error abriendo puerto serial {}: {}".format(port_path, e))
             return False
 
-    def write_data(self, data: Dict[str, float], order: list, message_type: int) -> bool:
+
+
+    def write_data(self, data, message_type):
         if not self.connection or not self.connection.is_open:
             return False
         try:
-            payload = b''.join(struct.pack('<f', data[key]) for key in order)
-            header = struct.pack('<BBB', 0xAA, message_type, len(payload))
+            message = self.MESSAGE_FORMAT[message_type]
+            keys = message['keys']
+            formats = message['format']
+            payload = b''.join(struct.pack(formats[key][0], round(data[key]*formats[key][1])) for key in keys)
+            header = struct.pack('<BB', 0xAA, message_type)
 
             self.connection.write(header + payload)
             return True
         except (KeyError, struct.error, serial.SerialException) as e:
-            print(f"Error escribiendo datos: {e}")
+            print("Error escribiendo datos: {}".format(e))
             return False
 
-    def read_data(self) -> Tuple[bool, Dict[str, float]]:
+    def read_data(self):
         if not self.connection or not self.connection.is_open:
             return False, {}
-        
-        packet_header, message_type, data_length = struct.unpack('<BBB', header)
-
-        if packet_header != 0xAA:
-            return False, {}
-
-        if message_type == 0x01 and data_length != 32:
-            return False, {}
-
-        if message_type == 0x02 and data_length != 16:
-            return False, {}
-
-        data = serial_name.read(data_length)
-        
-        if len(data) != data_length:
-            return False, {}
-
-        data = data_format(data, message_type)
-
-        return True, data
-    except:
-        return False, {}
-
-
-def data_format(data_read, message_type):
-    data = {}
-
-    if message_type == 0x01:
-        order = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8']
-    elif message_type == 0x02:
-        order = ['A1', 'A2', 'A3', 'A4']
-    else:
-        return {}
-
-    for i, key in enumerate(order):
-        start = i * 4
-        value = struct.unpack('<f', data_read[start:start + 4])[0]
-        data[key] = value
-
-    return data
         try:
             while True:
                 byte = self.connection.read(1)
                 if not byte:
                     return False, {}
-                if byte[0] == 0xAA:
+                if byte == b'\xAA':
                     break
-            metadata = self.connection.read(2)
-            if len(metadata) < 2:
+
+            type_byte = self.connection.read(1)
+
+            if len(type_byte) != 1:
                 return False, {}
 
-            msg_type, length = struct.unpack('<BB', metadata)
+            msg_type = struct.unpack('<B', type_byte)[0]                
 
-            if msg_type not in self.ORDER_MAP:
+            if msg_type not in self.MESSAGE_FORMAT:
                 return False, {}
 
-            expected_length, keys = self.ORDER_MAP[msg_type]
-            if length != expected_length:
-                return False, {}
+            message = self.MESSAGE_FORMAT[msg_type]
+
+            keys = message['keys']
+            formats = message['format']
+
+            length = sum(
+                struct.calcsize(formats[key][0]) for key in keys
+            )
 
             payload = self.connection.read(length)
             if len(payload) != length:
                 return False, {}
 
-            float_count = len(keys)
-            values = struct.unpack(f'<{float_count}', payload)
+            values = []
+            offset = 0
+            for key in keys:
+                fmt, scale = formats[key]
+                size = struct.calcsize(fmt)
+                raw_value = struct.unpack_from(fmt, payload, offset)[0]
+                value = raw_value / scale
+                values.append(value)
+                offset += size
 
             return True, dict(zip(keys, values))
         except (struct.error, serial.SerialException) as e:
-                    print(f"Error en lectura: {e}")
-                    return False, {}
+            print("Error en lectura: {}".format(e))
+            return False, {}

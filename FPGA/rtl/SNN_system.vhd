@@ -13,7 +13,7 @@ entity SNN_system is
 end SNN_system;
 
 architecture Behavioral of SNN_system is
-    signal data: STD_LOGIC_VECTOR(103 downto 0);
+    signal data: STD_LOGIC_VECTOR(95 downto 0);
     signal action: STD_LOGIC_VECTOR(31 downto 0);
     signal data_valid: STD_LOGIC;
     signal data_ready: STD_LOGIC;

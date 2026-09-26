@@ -32,7 +32,7 @@ entity input_interface is
         
         ready: out STD_LOGIC;
         valid: in STD_LOGIC;
-        data:  in STD_LOGIC_VECTOR(103 downto 0);
+        data:  in STD_LOGIC_VECTOR(95 downto 0);--(103 downto 0);
         
         ready_SNN: in STD_LOGIC; 
         valid_SNN: out STD_LOGIC;
@@ -45,7 +45,7 @@ architecture Behavioral of input_interface is
 
 
    
-    type statetype is (INPUT, PROC1,PROC1B, PROC2, PROC3, OUTPUT);
+    type statetype is (INPUT, PROC1, PROC2, PROC3, OUTPUT);
     signal state, nextstate: statetype;
     signal speed: SFIXED(1 downto -14);
     signal receive_pitch, yaw: SFIXED(8 downto -7);
@@ -67,7 +67,7 @@ architecture Behavioral of input_interface is
     signal tack: STD_LOGIC;
     signal desired_heading: SFIXED(8 downto -7);
     signal err_ang: SFIXED(8 downto -7);
-    signal waypoint2: STD_LOGIC;
+    --signal waypoint2: STD_LOGIC;
     signal pitch: SFIXED(8 downto -7);
     signal sum_angle: SFIXED(8 downto -7);
     signal n1, n2: natural;
@@ -87,7 +87,7 @@ architecture Behavioral of input_interface is
     signal valid_pulse : STD_LOGIC := '0';
     signal ready_SNN_d  : STD_LOGIC := '0';
     signal tack_angle_valid: STD_LOGIC;
-    signal temp_desired_heading: SFIXED(8 downto -7);
+    --signal temp_desired_heading: SFIXED(8 downto -7);
     
     signal generated_spikes: STD_LOGIC_VECTOR(3 downto 0);
     
@@ -130,8 +130,6 @@ begin
                     nextstate <= INPUT;
                 end if;
             when PROC1 =>
-                nextstate <= PROC1B;
-            when PROC1B => 
                 nextstate <= PROC2;
             when PROC2 =>
                 nextstate <= PROC3;
@@ -168,9 +166,9 @@ begin
                 aparent_wind <= (others => '0');
                 receive_desired_heading <= (others => '0');
                 speed <= (others => '0');
-                waypoint2 <= '0';                 
+                --waypoint2 <= '0';                 
             	counter <= (others => '0');
-            	temp_desired_heading <= (others => '0');
+            	--temp_desired_heading <= (others => '0');
                 desired_heading      <= (others => '0');
 	    else
                 case state is
@@ -182,7 +180,7 @@ begin
                             receive_desired_heading <= to_sfixed(data(63 downto 48), receive_desired_heading'high, receive_desired_heading'low);
                             aparent_wind <= to_sfixed(data(79 downto 64), aparent_wind'high, aparent_wind'low);
                             speed <= to_sfixed(data(95 downto 80),speed'high,speed'low);
-                            waypoint2 <= data(96);
+                            --waypoint2 <= data(96);
                         end if;
                     when PROC1 => 
                         next_tack_direction := tack_direction;
@@ -224,25 +222,27 @@ begin
                             end if;
                             
                             tack_angle_logic0 <= tack_angle_logic1;
-                            temp_desired_heading <= angle_wrap(resize(temp_tack_angle, 10, -7) + resize(real_wind_angle, 10, -7) + resize(phase, 10, -7));
+                            desired_heading <= angle_wrap(resize(temp_tack_angle, 10, -7) + resize(real_wind_angle, 10, -7) + resize(phase, 10, -7));--temp_desired_heading <= angle_wrap(resize(temp_tack_angle, 10, -7) + resize(real_wind_angle, 10, -7) + resize(phase, 10, -7));
                             tack_direction <= next_tack_direction;
                             tack_sign <= next_tack_sign;
                             tack <= '1';       
                         else
                             tack <= '0';
                             tack_angle_valid <= '0';
-                            temp_desired_heading <= receive_desired_heading;
+                            desired_heading <= receive_desired_heading;--temp_desired_heading <= receive_desired_heading;
                         end if;
                         
-                    when PROC1B =>   
+                    --when PROC1B =>   
+                        /*
                         if waypoint2 = '1' then
                             desired_heading <= angle_wrap(
                                 resize(temp_desired_heading, 10, -7) +
                                 to_sfixed(180, 10, -7)
                             );
                         else
-                            desired_heading <= temp_desired_heading;
-                        end if;
+                        */
+                        --desired_heading <= temp_desired_heading;
+                        --end if;
                     /* 
                         if temp_desired_heading /= to_sfixed(0, temp_desired_heading'high, temp_desired_heading'low ) and waypoint2 = '1' then
                             if temp_desired_heading(temp_desired_heading'high) = '1' then
@@ -257,11 +257,11 @@ begin
                         end if;*/
                     when PROC2 =>
                         temp_err_ang := angle_wrap( resize(desired_heading, 10, -7) - resize(current_heading, 10, -7));
-                        
+                        /*
                         if waypoint2 = '1' then
                             temp_err_ang := resize(-temp_err_ang,temp_err_ang'high,temp_err_ang'low);
                         end if;
-                        
+                        */
                         if temp_err_ang >= sensormax1 or temp_err_ang <= -sensormax1 then
                             if temp_err_ang(temp_err_ang'high) = '1' then
                                 err_ang <= to_sfixed(-(sensormax1 -1), err_ang'high, err_ang'low);    
@@ -345,7 +345,7 @@ begin
 ---------    
 
     output_index_rudder <= 2*(k1*n2+n1);
-    output_index_sail <= 2*(k3 + ns1) when waypoint2 = '1' else 2*ns1; 
+    output_index_sail <= 2*ns1;--2*(k3 + ns1) when waypoint2 = '1' else 2*ns1; 
     ready <= '1' when state = INPUT else '0';
     
             

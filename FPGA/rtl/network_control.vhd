@@ -29,6 +29,7 @@ begin
     en_back <= ready and valid;
     en_front <= output_state(0) and not ready;
     weights_done <= and(weight_accum_done);
+    valid_b <= not ready;
     
     process(clk) begin
         if rising_edge(clk) then
@@ -40,19 +41,6 @@ begin
                 ready <= '1';
             end if;            
         end if;    
-    end process;
-    
-    process(clk)
-    begin
-        if rising_edge(clk) then
-            if reset = '1' then
-                valid_b <= '0';
-            elsif en_back = '1' then
-                valid_b <= '1';
-            elsif en_front = '1' then
-                valid_b <= '0';
-            end if;
-        end if;
     end process;
     
     process(clk) begin
