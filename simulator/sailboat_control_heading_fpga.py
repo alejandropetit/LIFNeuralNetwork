@@ -298,16 +298,7 @@ def controller():
     waypointDistance.data = distance
     waypointIndex.data = route_manager.index
 
-    if route_manager.finished:
-        if tiempo_fin is None:
-            tiempo_fin = ahora
-            time_counter = (tiempo_fin - tiempo_inicio).to_sec()
-
-            rospy.loginfo(
-                'RUTA COMPLETADA FPGA: %.3f segundos simulados',
-                time_counter
-            )
-
+    if route_manager.finished and tiempo_fin is not None:
         counter = 0
         result.data = 1
         return 0.0, 0.0
@@ -358,6 +349,19 @@ def controller():
 
     if save_data and base is not None:
         base.append_data([time_counter,x_pos,y_pos,speed,pitch_deg,yaw_deg,relative_wind_deg,desired_heading_deg,apparent_wind_deg,route_manager.index,waypoint[0],waypoint[1],distance,last_rudder_action_deg,last_sail_action_deg])
+
+    if route_manager.finished:
+        tiempo_fin = ahora
+        time_counter = (tiempo_fin - tiempo_inicio).to_sec()
+
+        rospy.loginfo(
+            'RUTA COMPLETADA FPGA: %.3f segundos simulados',
+            time_counter
+        )
+
+        counter = 0
+        result.data = 1
+        return 0.0, 0.0
 
     # --------------------------------------------------------
     # 6. Enviar EXACTAMENTE 7 valores a la FPGA
