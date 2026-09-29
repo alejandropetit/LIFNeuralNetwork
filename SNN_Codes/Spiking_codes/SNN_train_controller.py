@@ -12,6 +12,7 @@ class SNN_complete_train_test:
     # Serial port
     port_name='interface_1'
     direction = '/home/nelson/Documentos/Ubuntu_master/SNN_Codes/Spiking_codes'
+    direction_mem = '/home/nelson/Documentos/Ubuntu_master/FPGA/memory/poisson.mem'
     timeout=15
     p = sp.SerialPort(direction, port_name, timeout)
     config_file = 'config.txt'
@@ -149,6 +150,10 @@ class SNN_complete_train_test:
                                         min_out = self.Am [1],
                                         exit_state = self.hyperparam[8])
         
+        rudder_ctrl.load_poisson_memory(self.direction_mem)
+
+        sails_ctrl.load_poisson_memory(self.direction_mem)
+        
         rudder_ctrl.SNN_setup(neurons=self.neur[0], dt=self.dt, time=self.time_network, 
                               recurrent=self.recurrent[0], model='LIF', wM = self.PMax, 
                               wm = self.Pmin, n = self.step, codify = self.codify, 
@@ -165,6 +170,8 @@ class SNN_complete_train_test:
         
         rudder_ctrl = SNN.spiking_neuron(name = self.files_names[0])     
         sails_ctrl = SNN.spiking_neuron(name = self.files_names[1])
+        rudder_ctrl.load_poisson_memory(self.direction_mem)
+        sails_ctrl.load_poisson_memory(self.direction_mem)
         rudder_ctrl.load_SNN(path=self.direction,learning = not self.test)
         sails_ctrl.load_SNN(path=self.direction,learning = not self.test)
         self.config_environment(rudder_ctrl = rudder_ctrl, sails_ctrl = sails_ctrl) #quiero cambiaarlo

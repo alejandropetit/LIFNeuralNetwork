@@ -217,6 +217,86 @@ class spiking_neuron:
             print(e)
             raise
 
+    def load_poisson_memory(self, path):
+
+        with open(path, "r") as f:
+
+            self.poisson_memory = [
+                int(line.strip(), 2)
+                for line in f
+                if line.strip()
+            ]
+
+        print(
+            "Poisson memory loaded:",
+            len(self.poisson_memory),
+            "words"
+        )
+
+    def poisson_memory_encoding(
+        self,
+        datum: torch.Tensor,
+        time: int,
+        dt: float = 1.0,
+        device="cpu"
+    ) -> torch.Tensor:
+
+        assert (datum >= 0).all(), "Inputs must be non-negative"
+
+        shape, size = datum.shape, datum.numel()
+
+        datum = datum.flatten().to(device)
+
+        time = int(time / dt)
+
+        # Tensor final de spikes
+        spikes = torch.zeros(
+            (time, size),
+            dtype=torch.uint8,
+            device=device
+        )
+
+
+        active = torch.nonzero(
+            datum != 0,
+            as_tuple=False
+        ).flatten()
+
+        if active.numel() == 0:
+            return spikes.view(time, *shape)
+
+
+
+        first_neuron = active[0].item()
+
+        for step in range(time):
+
+            address = step % len(self.poisson_memory)
+
+            word = self.poisson_memory[address]
+
+
+            if self.is_rudder_controller:
+
+                # bits 1 downto 0
+                pair = word & 0b0011
+
+            else:
+
+                # bits 3 downto 2
+                pair = (word >> 2) & 0b0011
+
+            # Separar las dos neuronas redundantes
+            spike_0 = pair & 0b01
+            spike_1 = (pair >> 1) & 0b01
+
+            spikes[step, first_neuron] = spike_0
+
+            if first_neuron + 1 < size:
+                spikes[step, first_neuron + 1] = spike_1
+
+        return spikes.view(time, *shape)
+
     
     def SNN_encoding(self, dato, redundance):
         time = self.time_network
@@ -230,6 +310,8 @@ class spiking_neuron:
             t=codify.bernoulli(data_redundant,time=time, dt=self.dt)
         elif code=='poisson':
             t=codify.poisson(data_redundant,time=time, dt=self.dt)
+        elif code=='poisson_mem':
+            t=self.poisson_memory_encoding(data_redundant, time=time, dt=self.dt)
         elif code=='rank_order':
             t=codify.rank_order(data_redundant,time=time, dt=self.dt)
         elif code=='repeat':
