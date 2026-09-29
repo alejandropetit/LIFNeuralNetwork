@@ -218,14 +218,34 @@ class sailboat_environment(ts.train_test_scenarios):
             band = False
         return band
             
-            
+    def apparent_wind_fpga(self, real_wind_angle, vx_body, vy_body,
+                        roll_deg, pitch_deg, yaw_deg):
+        # Orientación del velero, en radianes
+        roll, pitch, yaw = np.radians([roll_deg, pitch_deg, yaw_deg])
+
+        cr, sr = np.cos(roll), np.sin(roll)
+        cp, sp = np.cos(pitch), np.sin(pitch)
+        cy, sy = np.cos(yaw), np.sin(yaw)
+
+
+        vx_world = (cy * cp) * vx_body + (cy * sp * sr - sy * cr) * vy_body
+        vy_world = (sy * cp) * vx_body + (sy * sp * sr + cy * cr) * vy_body
+
+        # La configuración de entrenamiento usa viento de 2.2 m/s
+        wind_angle = np.radians(real_wind_angle)
+        apparent_x = 2.2 * np.cos(wind_angle) - vx_world
+        apparent_y = 2.2 * np.sin(wind_angle) - vy_world
+
+        apparent_deg = np.degrees(np.arctan2(apparent_y, apparent_x))
+        return self.angle_saturation(apparent_deg, -180, 180)
+    '''
     def aparent_wind(self, real_wind_angle, sailboat_speed, yaw):
         
         i = sailboat_speed/(1*2.2)
         theta = np.arctan2(np.sin(np.pi*real_wind_angle/180)-i*np.sin(np.pi*yaw/180),
                            np.cos(real_wind_angle)-i*np.cos(yaw))
         
-        return 180*theta/np.pi
+        return 180*theta/np.pi'''
     
     def sail_aproximation(self, prev_yaw):
         
@@ -426,9 +446,20 @@ class sailboat_environment(ts.train_test_scenarios):
             else:
                 
                 l = [min_rate]*int(2*self.hyperparam[7]);
-                angle_apparent = self.aparent_wind(real_wind_angle = real_wind_angle, 
+
+                angle_apparent = self.apparent_wind_fpga(
+                    real_wind_angle=real_wind_angle,
+                    vx_body=data[7],
+                    vy_body=data[8],
+                    roll_deg=data[3],
+                    pitch_deg=data[4],
+                    yaw_deg=actual_heading
+                )
+                '''
+                angle_apparent = self.apparent_wind(real_wind_angle = real_wind_angle, 
                                   sailboat_speed = self.actual_speed,
                                   yaw = actual_heading)
+                '''
                 self.sum_angle = self.angle_saturation(ang = angle_apparent + actual_heading, #Is the apparent wind, no the real
                                                        min_ang=-180, 
                                                        max_ang=180)
