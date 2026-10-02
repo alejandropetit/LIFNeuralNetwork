@@ -18,6 +18,8 @@
             <arg name="gui" value="false" />
             <arg name="paused" value="true"/>
             <arg name="verbose" value="true"/>
+            <arg name="extra_gazebo_args" value="--seed $(arg seed)"/>
+            <arg name="seed" default="42"/>
             <arg name="world_name" value="$(find usv_sim)/world/empty_accelerated.world"/>
         </include>
 
