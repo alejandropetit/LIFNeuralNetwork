@@ -1,0 +1,17 @@
+uint64 sequence
+bool initialize
+uint32 steps
+float64 rudder
+float64 sail
+float64 sail2
+---
+bool success
+string status_message
+uint64 sequence
+uint64 iteration
+time sim_time
+float64 step_size
+geometry_msgs/Pose pose
+# Velocities in the boat frame, matching freefloating_gazebo odometry.
+geometry_msgs/Twist twist
+sensor_msgs/JointState joints

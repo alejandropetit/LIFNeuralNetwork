@@ -1,0 +1,35 @@
+<?xml version="1.0" ?><launch>
+
+	<arg default="false" name="gui"/>
+	<arg default="false" name="parse"/>   
+	<arg default="sailboat" name="namespace"/>  
+	<arg default="0" name="posX"/>
+	<arg default="0" name="posY"/>
+	<arg default="0" name="posZ"/>
+    <arg default="false" name="spawnGazebo"/>
+    <arg default="global" name="windType"/>
+    <arg default="global" name="waterType"/>
+        
+         
+    	<!-- spawn in Gazebo with GUI -->
+    	
+	<group ns="$(arg namespace)" unless="$(arg parse)">
+		<param command="$(find xacro)/xacro --inorder $(find usv_sim)/xacro/sailboat.xacro windType:=$(arg windType) waterType:=$(arg waterType)" name="robot_description"/>
+		<node args="-urdf -model sailboat -param robot_description -x $(arg posX) -y $(arg posY) -z $(arg posZ) -R 0 -P 0 -Y 0" name="spawner" output="screen" pkg="gazebo_ros" respawn="false" type="spawn_model" unless="$(arg spawnGazebo)"/>
+
+		<rosparam command="load" file="$(find usv_sim)/config/sailboat.yaml"/>
+
+		
+        <node name="heading_control" output="screen" pkg="usv_base_ctrl" type="sailboat_control_heading.py" unless="$(arg gui)"/>
+
+		<node args="state /odom" name="odom_relay" pkg="topic_tools" type="relay"/>
+
+		<!-- GUI interface to control joints -->
+			<node if="$(arg gui)" name="joint_state_publisher" pkg="joint_state_publisher" respawn="true" type="joint_state_publisher">
+				<param name="use_gui" value="True"/>
+				<remap from="joint_states" to="joint_setpoint"/>        
+			</node>
+			<node if="$(arg gui)" name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>             
+
+    	</group>
+</launch>
