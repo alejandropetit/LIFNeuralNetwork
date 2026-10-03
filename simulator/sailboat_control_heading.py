@@ -1,271 +1,254 @@
-#!/usr/bin/env python
-# license removed for brevity
+#!/usr/bin/python
+from __future__ import print_function
+import csv
+import ctypes
+import datetime
+import json
+import math
+import os
+import sys
+import time
 
 import rospy
-import math
-import tf
+from tf.transformations import euler_from_quaternion
+from snn_lockstep.srv import Step, StepRequest
+
+INSTALLED = '/home/nelson/catkin_ws/install_isolated/share/usv_base_ctrl/scripts'
+sys.path.insert(0, INSTALLED)
 import communicate as cm
-import text_file as db
-from sensor_msgs.msg import JointState
-from std_msgs.msg import Header
-from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Quaternion
-from geometry_msgs.msg import Twist, Point, Quaternion
-from std_msgs.msg import Float64
-from std_srvs.srv import Empty
-from gazebo_msgs.msg import ModelState 
-from gazebo_msgs.srv import SetModelState
-from tf.transformations import quaternion_from_euler
 
-serial_mgr = cm.SerialManager()
+RUN = None
+NETWORK = '/home/nelson/Documentos/Ubuntu_master/SNN_Codes/Spiking_codes'
+DEFAULT_ROUTE = '/home/nelson/Documentos/Ubuntu_master/routes/route.json'
 
-initial_pose = Odometry()
-target_pose = Odometry()
-rate_value = 2   # Period of saving data
-control_rate = 1 # Period of the controller (1/control_time)
-result = Float64()
-result.data = 0
-windDir= Float64()
-windDir.data = 1.5 
-currentHeading= Float64()
-currentHeading.data = 0
-current_heading = 0
-heeling = 0
-spHeading = 10 
-isTacking = 0
-reset_world = 0
-save_data = False
-counter = 0
-time_counter = 0
-base = ''
-db_name = 'Test_1'
-constant = [2,3]
-state_msg = ''
-yaw_angles = [0,135,179,0] #Train yaw angles
-yaw_counter = 0
 
-def get_pose(initial_pose_tmp):
-    global initial_pose 
-    initial_pose = initial_pose_tmp
+class Timespec(ctypes.Structure):
+    _fields_ = [('seconds', ctypes.c_long), ('nanoseconds', ctypes.c_long)]
 
-def get_target(target_pose_tmp):
-    global target_pose 
-    target_pose = target_pose_tmp
-    
-def angle_saturation(sensor):
-    if sensor > 180:
-        sensor = sensor - 360
-    if sensor < -180:
-        sensor = sensor + 360
-    return sensor
 
-def talker_ctrl():
-    global rate_value
-    global currentHeading
-    global windDir 
-    global isTacking
-    global heeling
-    global spHeading
-    global counter
-    global time_counter
-    global base 
-    global constant
+clock_gettime = (None if hasattr(time, 'monotonic') else
+                 ctypes.CDLL('librt.so.1', use_errno=True).clock_gettime)
 
+
+def monotonic():
+    if hasattr(time, 'monotonic'):
+        return time.monotonic()
+    value = Timespec()
+    if clock_gettime(1, ctypes.byref(value)):
+        raise OSError(ctypes.get_errno(), 'clock_gettime failed')
+    return value.seconds + value.nanoseconds * 1e-9
+
+
+def save(name, data):
+    if RUN is None:
+        return
+    path = os.path.join(RUN, name)
+    with open(path + '.tmp', 'w') as stream:
+        json.dump(data, stream)
+    getattr(os, 'replace', os.rename)(path + '.tmp', path)
+
+
+def load_route(path):
+    with open(path, 'r') as stream:
+        route = json.load(stream)
+    if not isinstance(route, list) or len(route) < 2:
+        raise ValueError('route.json must contain at least two [x, y, type] points')
+    for point in route:
+        if not isinstance(point, list) or len(point) != 3:
+            raise ValueError('Each route point must be [x, y, type]')
+        for value in point:
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or math.isnan(value) or math.isinf(value)):
+                raise ValueError('Route coordinates and types must be finite numbers')
+    return route
+
+
+def read_action(port, first_sample):
+    success, action = port.read_data()
+    # The original test_SNN sends a startup reset before answering sensors.
+    # Consume it once; do not resend sensors or advance physics for this message.
+    if success and action.get('A4') == 1000 and first_sample:
+        success, action = port.read_data()
+    if not success:
+        raise RuntimeError('Cannot receive the SNN action')
+    if not all(key in action for key in ('A1', 'A2', 'A3', 'A4')):
+        raise RuntimeError('Invalid SNN action message')
+    if action['A4'] not in (0, 1, 3, -1):
+        raise RuntimeError('Unexpected SNN status/reset: ' + str(action['A4']))
+    return action
+
+
+class RouteProgress(object):
+    def __init__(self, route):
+        self.route = route
+        self.target_index = 1  # First point is the start, not a target.
+        self.completed = False
+
+    def update(self, action, sensors):
+        if self.completed:
+            raise RuntimeError('Received an action after route completion')
+        target_index = self.target_index
+        target = self.route[target_index]
+        # Compare the same quantized position sent through the serial protocol.
+        x = int(round(sensors['S1'] * 64)) / 64.0
+        y = int(round(sensors['S2'] * 64)) / 64.0
+        distance = math.hypot(target[0] - x, target[1] - y)
+        if action['A4'] in (1, -1):
+            if distance > 2.0 + 1e-9:
+                raise RuntimeError('SNN arrival disagrees with route.json; check both routes')
+            last = target_index == len(self.route) - 1
+            if action['A4'] == -1 and not last:
+                raise RuntimeError('SNN ended before the last route.json target')
+            self.completed = last
+            if not last:
+                self.target_index += 1
+        return target_index
+
+
+def angle_saturation(value):
+    if value > 180:
+        value -= 360
+    if value < -180:
+        value += 360
+    return value
+
+
+def sensors_from_state(state, wind_direction):
+    q = state.pose.orientation
+    roll, pitch, yaw = euler_from_quaternion((q.x, q.y, q.z, q.w))
+    heading = -angle_saturation(math.degrees(yaw))
+    relative_wind = angle_saturation(math.degrees(wind_direction) + heading)
+    return {'S1': state.pose.position.x, 'S2': state.pose.position.y,
+            'S3': state.twist.linear.x, 'S4': state.twist.linear.y,
+            'S5': round(math.degrees(roll), 0), 'S6': round(math.degrees(pitch), 0),
+            'S7': round(-heading, 0), 'S8': round(relative_wind, 0)}
+
+
+def main():
+    global RUN
     rospy.init_node('usv_simple_ctrl', anonymous=True)
-    rate = rospy.Rate(rate_value) # 0.5Hz
-    # publishes to thruster and rudder topics
-    pub_sail = rospy.Publisher('/sail/angleLimits', Float64, queue_size=10)
-    #pub_sail_2 = rospy.Publisher('sail_2/angleLimits', Float64, queue_size=10)
-    pub_rudder = rospy.Publisher('joint_setpoint', JointState, queue_size=10)
-    pub_result = rospy.Publisher('move_usv/result', Float64, queue_size=10)
-    pub_heading = rospy.Publisher('currentHeading', Float64, queue_size=10)
-    pub_windDir = rospy.Publisher('windDirection', Float64, queue_size=10)
-    pub_heeling = rospy.Publisher('heeling', Float64, queue_size=10)
-    pub_spHeading = rospy.Publisher('spHeading', Float64, queue_size=10)
-    
-    # subscribe to state and targer point topics
-    rospy.Subscriber("state", Odometry, get_pose)  # get usv position (add 'gps' position latter)
-    rospy.Subscriber("move_usv/goal", Odometry, get_target)  # get target position
+    route_path = os.path.abspath(os.path.expanduser(
+        os.environ.get('SNN_ROUTE_FILE', DEFAULT_ROUTE)))
+    route = load_route(route_path)
+    tracker = RouteProgress(route)
+    output_default = os.path.join(os.path.dirname(os.path.dirname(NETWORK)),
+        'results', 'lockstep', datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        + '_' + str(os.getpid()))
+    RUN = os.path.abspath(os.path.expanduser(os.environ.get('SNN_RUN_DIR', output_default)))
+    if not os.path.isdir(RUN):
+        os.makedirs(RUN)
+    max_sim = float(os.environ.get('SNN_MAX_SIM', '3600'))
+    if math.isnan(max_sim) or math.isinf(max_sim) or max_sim <= 0:
+        raise ValueError('SNN_MAX_SIM must be positive and finite')
+    serial_timeout = float(os.environ.get('SNN_SERIAL_TIMEOUT', '150'))
+    if math.isnan(serial_timeout) or math.isinf(serial_timeout) or serial_timeout <= 0:
+        raise ValueError('SNN_SERIAL_TIMEOUT must be positive and finite')
+    save('route_used.json', route)
+    rospy.loginfo('Lockstep route: %s; results: %s', route_path, RUN)
+    rospy.wait_for_service('/snn_step/advance', timeout=150)
+    for name in ('sail_joint', 'sail_joint_2'):
+        rospy.wait_for_service('/snn_step/' + name, timeout=150)
+    # Model plugins load concurrently. The stepping service can appear before
+    # freefloating_gazebo_control finishes publishing joint limits and PID gains.
+    deadline = monotonic() + 150
+    while True:
+        config = rospy.get_param('/sailboat/controllers/config/joints', {})
+        names = config.get('name', [])
+        if (2 <= len(names) <= 3 and all(len(config.get(key, [])) == len(names)
+                                   for key in ('lower', 'upper', 'velocity'))):
+            break
+        if monotonic() > deadline or rospy.is_shutdown():
+            raise RuntimeError('Original joint controller did not finish initialization')
+        time.sleep(0.02)
+    advance = rospy.ServiceProxy('/snn_step/advance', Step)
+    state = advance(StepRequest(sequence=0, initialize=True, steps=0))
+    if not state.success:
+        raise RuntimeError(state.status_message)
+    if math.hypot(state.pose.position.x - route[0][0],
+                  state.pose.position.y - route[0][1]) > 0.02:
+        raise RuntimeError('First route point must match the plugin start position (240, 100)')
+    steps_per_control = int(round(1.0 / state.step_size))
+    if steps_per_control <= 0 or abs(steps_per_control * state.step_size - 1.0) > 1e-9:
+        raise RuntimeError('Physics step must divide the 1 Hz SNN period')
+    wind = math.atan2(rospy.get_param('/uwsim/wind/y'), rospy.get_param('/uwsim/wind/x'))
+    port = cm.SerialManager()
+    deadline = monotonic() + 150
+    while not os.path.exists(os.path.join(NETWORK, 'interface_2')):
+        if monotonic() > deadline or rospy.is_shutdown():
+            raise RuntimeError('Virtual serial port interface_2 was not created')
+        time.sleep(0.02)
+    if not port.initialize(NETWORK, 'interface_2', timeout=serial_timeout):
+        raise RuntimeError('Cannot open the SNN virtual serial port')
+
+    try:
+        run_loop(advance, state, steps_per_control, wind, port, route, tracker, max_sim)
+    finally:
+        port.connection.close()
 
 
-    while not rospy.is_shutdown():
-        try:
-	    time_counter += (1.0/rate_value)
-	    if save_data and constant[0]!=constant[1]:
-                base = db.text_files(new_file = True, file_name = db_name, structure = ['time','speed','wind','x','y'])  
-		constant[0] = constant[1]
-		time_counter = 0
-	    final = rudder_ctrl_msg()
-	    if not save_data or counter >= (rate_value // control_rate):
-                pub_rudder.publish(final[0])
-	        pub_sail.publish(final[1])
-		counter = 0
-                #pub_sail_2.publish(final[2])
-            pub_result.publish(result)
-            pub_heading.publish(currentHeading)
-            pub_windDir.publish(windDir)
-            pub_heeling.publish(heeling)
-            pub_spHeading.publish(spHeading)
-            rate.sleep()
-        except rospy.ROSInterruptException:
-	    rospy.logerr("ROS Interrupt Exception! Just ignore the exception!")
-        except rospy.ROSTimeMovedBackwardsException:
-	    rospy.logerr("ROS Time Backwards! Just ignore the exception!")
-
-def reset_environment(yaw):
-    q = quaternion_from_euler(0, 0, yaw)
-    state_msg.model_name = 'sailboat'
-    state_msg.pose.position.x = 240
-    state_msg.pose.position.y = 100
-    state_msg.pose.position.z = 0
-    state_msg.pose.orientation.x = q[0]
-    state_msg.pose.orientation.y = q[1]
-    state_msg.pose.orientation.z = q[2]
-    state_msg.pose.orientation.w = q[3]
-    resp = set_state(state_msg)
-
-def controller():
-    # erro = sp - atual
-    # ver qual gira no horario ou anti-horario
-    # aciona o motor (por enquanto valor fixo)
-    global initial_pose
-    global target_pose
-    global current_heading
-    global currentHeading
-    global spHeading
-    global windDir
-    global heeling
-    global result
-    global base
-    global counter
-    global time_counter
-    global constant
-    global db_name
-    global yaw_counter
-	
-    port_name='interface_2'
-    direction= '/home/nelson/Documentos/Ubuntu_master/SNN_Codes/Spiking_codes'
-    timeout=15
-
-    if not serial_mgr.connection or not serial_mgr.connection.is_open:
-        if not serial_mgr.initialize(direction, port_name, timeout):
-            rospy.logerr("No se pudo abrir el puerto serial.")
-            return 0, 0, 0
-
-
-    rudder_angle=0
-    sail_angle = 1
-    sail_angle_2 = 1
-    result_py3=0
-    # Position(set up and GPS) and odometry sensors processing and aconditioning
-
-    x1 = initial_pose.pose.pose.position.x
-    y1 = initial_pose.pose.pose.position.y
-    x2 = initial_pose.twist.twist.linear.x
-    y2 = initial_pose.twist.twist.linear.y
-    quaternion = (initial_pose.pose.pose.orientation.x, initial_pose.pose.pose.orientation.y, initial_pose.pose.pose.orientation.z,initial_pose.pose.pose.orientation.w) 
-    euler = tf.transformations.euler_from_quaternion(quaternion)
-
-    target_angle = math.degrees(euler[2])
-    myradians = math.atan2(y2-y1,x2-x1)
-    sp_angle = math.degrees(myradians)
-    sp_angle = angle_saturation(sp_angle)
-    spHeading = sp_angle
-    target_angle = angle_saturation(target_angle)
-    target_angle = -target_angle
-    current_heading = math.radians(target_angle)
-    currentHeading.data = current_heading
-    ##############################################
-    # Wind sensor processing and aconditionating
-    x = rospy.get_param('/uwsim/wind/x')
-    y = rospy.get_param('/uwsim/wind/y')
-    global_dir = math.atan2(y,x)
-    heeling = angle_saturation(math.degrees(global_dir)+180)
-    wind_dir = global_dir + current_heading
-    wind_dir = angle_saturation(math.degrees(wind_dir))
-    windDir.data = math.radians(angle_saturation(math.degrees(wind_dir)+180))
-    #############################################
-    counter +=1	
-    if save_data:
-	speed = math.sqrt(x2**2+y2**2)
-	base.append_data([time_counter,speed,math.degrees(global_dir),x1,y1])
-    # Send all the position sensors information to controller in python 3
-    if not save_data or counter >= (rate_value // control_rate):
-        try:
-            info=[]
-            info.append(round(math.degrees(euler[0]),0)) 
-            info.append(round(math.degrees(euler[1]),0)) 
-            info.append(round(math.degrees(-current_heading),0)) 
-            info.append(round(wind_dir,0)) 
-            datos={'S1': x1, 'S2': y1, 'S3': x2, 'S4': y2, 'S5': info[0], 'S6': info[1], 'S7': info[2], 'S8': info[3]}
-            if not serial_mgr.write_data(datos, message_type=0x01):
-                rospy.loginfo("No se pudo escribir en el puerto")
-            else:
-                band, recibe = serial_mgr.read_data()
-	        if band: 
-                    result_py3=recibe['A4']
-                    rudder_angle=recibe['A1']
-                    sail_angle=recibe['A2']
-                    sail_angle_2=recibe['A3']
-		    if result_py3 == 2:
-		        #reset_world()
-			reset_environment(math.radians(yaw_angles[yaw_counter]))
-	                result_py3=0
-		    elif result_py3 == 1000:
-			yaw_counter = 0
-			reset_environment(math.radians(yaw_angles[yaw_counter]))
-			result_py3=0
-		    elif result_py3 > 100:
-			yaw_counter += 1
-			reset_environment(math.radians(yaw_angles[yaw_counter]))
-			result_py3=0
-		    elif result_py3 > 2 and save_data:
-			db_name=db_name[0:len(db_name)-1]+str(int(result_py3-2))
-			constant[1] = result_py3
-			
-			
-        except:
-            rospy.loginfo("Error abriendo el puerto")
-
-
-        #############################################   
-
-        # Actualization of result
-        result.data = int(result_py3)
-        #############################################  
-        #Timon y vela
-        return math.radians(rudder_angle),math.radians(sail_angle),math.radians(sail_angle_2)
-    
+def run_loop(advance, state, steps_per_control, wind, port, route, tracker, max_sim):
+    if sys.version_info[0] == 2:
+        stream = open(os.path.join(RUN, 'Test_Python.csv'), 'wb')
     else:
-	return 0,0,0
+        stream = open(os.path.join(RUN, 'Test_Python.csv'), 'w', newline='')
+    columns = ['ID', 'time', 'x', 'y', 'speed', 'pitch', 'yaw', 'relative_wind',
+               'waypoint_index', 'waypoint_x', 'waypoint_y', 'waypoint_distance',
+               'rudder_action', 'sail_action', 'sensor_x', 'sensor_y',
+               'response_sim_time', 'roundtrip_wall_seconds', 'processing_wall_seconds', 'iteration']
+    writer = csv.DictWriter(stream, columns)
+    writer.writeheader()
+    began = monotonic()
+    start_time = state.sim_time.to_sec()
+    sample = 0
+    try:
+        while not rospy.is_shutdown():
+            sensors = sensors_from_state(state, wind)
+            sent = monotonic()
+            if not port.write_data(sensors, message_type=0x01):
+                raise RuntimeError('Cannot send sensors to the SNN')
+            action = read_action(port, first_sample=(sample == 0))
+            received = monotonic()
+            sample += 1
+            target_index = tracker.update(action, sensors)
+            target = route[target_index]
+            elapsed = state.sim_time.to_sec() - start_time
+            row = dict(ID=sample, time=elapsed, x=sensors['S1'], y=sensors['S2'],
+                       speed=math.hypot(sensors['S3'], sensors['S4']), pitch=sensors['S6'],
+                       yaw=sensors['S7'], relative_wind=sensors['S8'],
+                       waypoint_index=target_index, waypoint_x=target[0], waypoint_y=target[1],
+                       waypoint_distance=math.hypot(target[0]-sensors['S1'], target[1]-sensors['S2']),
+                       rudder_action=action['A1'], sail_action=action['A2'],
+                       sensor_x=sensors['S1'], sensor_y=sensors['S2'], response_sim_time=elapsed,
+                       roundtrip_wall_seconds=received-sent, processing_wall_seconds='',
+                       iteration=state.iteration)
+            writer.writerow(row)
+            stream.flush()
+            progress = dict(simulation_seconds=elapsed, wall_seconds=received-began,
+                            samples=sample, waypoint_index=target_index)
+            save('progress.json', progress)
+            if tracker.completed:
+                save('navigation.json', dict(progress, outcome='completed'))
+                return
+            if elapsed >= max_sim:
+                save('navigation.json', dict(progress, outcome='simulation_timeout'))
+                return
+            next_state = advance(StepRequest(sequence=sample, initialize=False, steps=steps_per_control,
+                rudder=math.radians(action['A1']), sail=math.radians(action['A2']), sail2=math.radians(action['A3'])))
+            if not next_state.success:
+                raise RuntimeError(next_state.status_message)
+            if next_state.sequence != sample or next_state.iteration != state.iteration + steps_per_control:
+                raise RuntimeError('Physics step sequence mismatch')
+            if abs(next_state.sim_time.to_sec() - state.sim_time.to_sec() - 1.0) > 1e-8:
+                raise RuntimeError('Unexpected simulated time increment')
+            state = next_state
+        save('navigation.json', {'outcome': 'interrupted', 'samples': sample})
+    finally:
+        stream.close()
 
-def rudder_ctrl_msg():
-    msg = JointState()
-    msg.header = Header()
-    msg.name = ['rudder_joint', 'sail_joint', 'sail_joint_2']
-    res = controller()
-    msg.position = [res[0], res[1], res[2]]
-    msg.velocity = []
-    msg.effort = []
-    return msg,res[1],res[2]
 
 if __name__ == '__main__':
-
-    global reset_world
-    global control_rate
-    global rate_value
-
-    #rospy.wait_for_service('/gazebo/reset_world')
-    #reset_world = rospy.ServiceProxy('/gazebo/reset_world', Empty)
-
-    state_msg = ModelState()
-    rospy.wait_for_service('/gazebo/set_model_state')
-    set_state = rospy.ServiceProxy('/gazebo/set_model_state', SetModelState)
-    reset_environment(math.radians(yaw_angles[yaw_counter]))
-
-    if not save_data:
-	rate_value = control_rate
     try:
-        talker_ctrl()
-    except rospy.ROSInterruptException:
-        pass
+        main()
+    except Exception as exc:
+        save('navigation.json', {'outcome': 'failed', 'error': str(exc)})
+        raise

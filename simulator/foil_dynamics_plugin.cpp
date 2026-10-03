@@ -1,4 +1,4 @@
-#include "../include/foil_dynamics_plugin/foil_dynamics_plugin.h"
+#include <foil_dynamics_plugin/foil_dynamics_plugin.h>
 
 #include <algorithm>
 #include <string>
@@ -146,7 +146,10 @@ Foil_Dynamics_Plugin::Init ()
 	current_subscriber_ = rosnode_.subscribe ("/gazebo/current", 1, &Foil_Dynamics_Plugin::ReadWaterCurrent, this);
 	this->updateConnection = event::Events::ConnectWorldUpdateBegin (boost::bind (&Foil_Dynamics_Plugin::OnUpdate, this));
 	std::string topic = "/sail/angleLimits";
-	this->angleLimits_subscriber = rosnode_.subscribe (topic, 1, &Foil_Dynamics_Plugin::ropeSimulator, this);
+
+	if (this->linkType == "sail")
+        this->step_sail_service = rosnode_.advertiseService(std::string("/snn_step/") + this->jointName, &Foil_Dynamics_Plugin::SetStepSail, this);
+	//this->angleLimits_subscriber = rosnode_.subscribe (topic, 1, &Foil_Dynamics_Plugin::ropeSimulator, this);
 	//topic = "/sail_2/angleLimits";
 	//this->angleLimits_subscriber = rosnode_.subscribe (topic, 1, &Foil_Dynamics_Plugin::ropeSimulator, this);
 	//std::cerr << "\n compare to sail: " << this->linkType.compare ("sail");

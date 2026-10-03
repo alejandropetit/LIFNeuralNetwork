@@ -28,6 +28,8 @@
 #include <std_msgs/Float64.h>
 #include "water_current/GetSpeed.h"
 #include "wind_current/GetSpeed.h"
+#include <cmath>
+#include <snn_lockstep/SetSail.h>
 
 namespace gazebo
 {
@@ -120,6 +122,13 @@ namespace gazebo
     std::thread the_thread;
     protected: ros::Time oldTime;
 
+    public: ros::ServiceServer step_sail_service;
+    public: bool SetStepSail(snn_lockstep::SetSail::Request &req,
+                            snn_lockstep::SetSail::Response &res) {
+        res.success = this->world->IsPaused() && std::isfinite(req.angle);
+        if (res.success) this->angle = req.angle;
+        return true;
+    }    
     public: double angle = 0.0;
     public: ros::Subscriber  angleLimits_subscriber;
     public: void ropeSimulator(const std_msgs::Float64::ConstPtr& _angle){
