@@ -8,6 +8,7 @@ import math
 import os
 import sys
 import time
+import struct
 
 import rospy
 from tf.transformations import euler_from_quaternion
@@ -146,9 +147,8 @@ class RouteProgress(object):
             raise RuntimeError('Received an action after route completion')
         target_index = self.target_index
         target = self.route[target_index]
-        # Compare the same quantized position sent through the serial protocol.
-        x = int(round(sensors['S1'] * 64)) / 64.0
-        y = int(round(sensors['S2'] * 64)) / 64.0
+        x = struct.unpack('<f', struct.pack('<f', sensors['S1']))[0]
+        y = struct.unpack('<f', struct.pack('<f', sensors['S2']))[0]
         distance = math.hypot(target[0] - x, target[1] - y)
         if action['A4'] in (1, -1):
             if distance > 2.0 + 1e-9:
@@ -177,8 +177,8 @@ def sensors_from_state(state, wind_direction):
     relative_wind = angle_saturation(math.degrees(wind_direction) + heading)
     return {'S1': state.pose.position.x, 'S2': state.pose.position.y,
             'S3': state.twist.linear.x, 'S4': state.twist.linear.y,
-            'S5': round(math.degrees(roll), 0), 'S6': round(math.degrees(pitch), 0),
-            'S7': round(-heading, 0), 'S8': round(relative_wind, 0)}
+            'S5': math.degrees(roll), 'S6': math.degrees(pitch),
+            'S7': -heading, 'S8': relative_wind}
 
 
 def main():
