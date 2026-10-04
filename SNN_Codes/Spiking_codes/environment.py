@@ -315,24 +315,37 @@ class sailboat_environment(ts.train_test_scenarios):
 
         return control_action  
     
-    def environment_test(self, data, max_rate, min_rate):
-        control_action = [0,0,0,0]
-        self.control_inputs(data = data, max_rate = max_rate, min_rate = min_rate)
-        for i in range(len(self.controllers)):
-            control_action[i] = int(self.controllers[i].train_episode(n_data = self.n_data[i],
-                                                                      reward = 0))
-        control_action[3] = self.is_finish()
-        self.restart = cp.copy(control_action[3])
-        control_action[2] = control_action[1]
-        self.save_data(data,control_action)
-        if(self.restart==1):
-            self.state += 1
-            self.tack_angle_logic [0] = -1000
-            self.tack_angle_logic [1] = -1000
-            self.tack = False
-        # control_action[1] = self.sail_aproximation(prev_yaw=data[5])
-        # control_action[2] = control_action[1]
-        return control_action
+def environment_test(self, data, max_rate, min_rate):
+    control_action = [0, 0, 0, 0]
+    self.control_inputs(data=data, max_rate=max_rate, min_rate=min_rate)
+
+    control_action[3] = self.is_finish()
+    self.restart = cp.copy(control_action[3])
+
+    if self.restart == 1:
+        self.state += 1
+        self.tack_angle_logic[0] = -1000
+        self.tack_angle_logic[1] = -1000
+        self.tack = False
+
+        # Stop before accessing a waypoint beyond the route.
+        if self.state == len(self.waypoints) - 1:
+            return control_action
+
+        # Recompute inputs for the new waypoint.
+        self.control_inputs(data=data, max_rate=max_rate, min_rate=min_rate)
+
+    for i in range(len(self.controllers)):
+        control_action[i] = int(
+            self.controllers[i].train_episode(
+                n_data=self.n_data[i],
+                reward=0
+            )
+        )
+
+    control_action[2] = control_action[1]
+    self.save_data(data, control_action)
+    return control_action
     
     def environment_PI_test(self, port):
         data=port.read_data_sensor_2()

@@ -30,6 +30,7 @@ cp /home/nelson/catkin_ws/src/usv_sim_lsa/freefloating_gazebo_resources/freefloa
 cp /home/nelson/catkin_ws/src/usv_sim_lsa/freefloating_gazebo_resources/freefloating_gazebo/include/freefloating_gazebo/freefloating_pids_joint.h /opt/snn_trials/lockstep_ws/src/snn_lockstep/vendor/include/freefloating_gazebo/
 
 cp /home/nelson/Documentos/Ubuntu_master/Initial_scripts/start_experiment_D.sh /home/nelson/start_experiment.sh
+cp /home/nelson/Documentos/Ubuntu_master/Initial_scripts/experiment_config.sh /home/nelson/experiment_config.sh
 cp /home/nelson/Documentos/Ubuntu_master/Initial_scripts/Velero.sh /home/nelson/Velero.sh
 cp /home/nelson/Documentos/Ubuntu_master/Initial_scripts/Puerto_serie.sh /home/nelson
 cp /home/nelson/Documentos/Ubuntu_master/Initial_scripts/Anaconda.sh /home/nelson/Anaconda.sh

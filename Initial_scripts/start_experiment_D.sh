@@ -1,4 +1,5 @@
 #!/bin/bash
+source "$(dirname "${BASH_SOURCE[0]}")/experiment_config.sh" || exit 1
 export SNN_ROUTE_FILE="${SNN_ROUTE_FILE:-/home/nelson/Documentos/Ubuntu_master/routes/route.json}"
 if [ ! -f "$SNN_ROUTE_FILE" ]; then
     echo "No existe la ruta: $SNN_ROUTE_FILE" >&2

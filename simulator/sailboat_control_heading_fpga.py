@@ -133,7 +133,7 @@ class RouteManager(object):
             waypoint[1] - y
         )
 
-        if distance <= self.waypoint_radius:
+        if distance < self.waypoint_radius:
             if self.index < len(self.route) - 1:
                 self.index += 1
                 waypoint = self.current_waypoint()

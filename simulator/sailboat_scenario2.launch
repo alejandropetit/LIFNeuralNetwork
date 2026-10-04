@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <launch>
-	<arg name="seed" default="42"/>
+	<arg name="seed" default="$(env SNN_SEED)"/>
 
 	<arg name="gui" default="false"/>
 	<arg name="parse" default="false"/>

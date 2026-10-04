@@ -38,6 +38,7 @@ cp /home/nelson/catkin_ws/src/usv_sim_lsa/freefloating_gazebo_resources/freefloa
 
 
 cp /home/nelson/Documentos/Ubuntu_master/Initial_scripts/Velero.sh /home/nelson/Velero.sh
+cp /home/nelson/Documentos/Ubuntu_master/Initial_scripts/experiment_config.sh /home/nelson/experiment_config.sh
 cp /home/nelson/Documentos/Ubuntu_master/Initial_scripts/sail_init.sh /home/nelson/sail_init.sh
 
 chmod +x /home/nelson/Velero.sh
