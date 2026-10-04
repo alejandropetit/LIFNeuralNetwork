@@ -1,88 +1,122 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import rospy
+import csv
+import json
 import math
+import os
+import sys
+import time
+
+import rospy
 import tf
 import communicate as cm
-import text_file as db
-import os
-import json
 
-from sensor_msgs.msg import JointState
-from std_msgs.msg import Header, Float64
-from nav_msgs.msg import Odometry
-from gazebo_msgs.msg import ModelState
-from gazebo_msgs.srv import SetModelState
-from tf.transformations import quaternion_from_euler
+from std_msgs.msg import Float64
+from snn_lockstep.srv import Step, StepRequest
 
 
 # ============================================================
-# CONFIGURACION GENERAL
+# CONFIGURATION
 # ============================================================
 
 SERIAL_DIRECTORY = '/dev'
 SERIAL_PORT = 'ttyUSB0'
 SERIAL_TIMEOUT = 15
 
-DATA_DIRECTORY = '/home/nelson/Documentos/Ubuntu_master/SNN_Codes/Spiking_codes'
-
-rate_value = 2       # Frecuencia del loop cuando se guardan datos
-control_rate = 1     # Frecuencia del controlador
-save_data = True
-
+DATA_DIRECTORY = (
+    '/home/nelson/Documentos/Ubuntu_master/SNN_Codes/Spiking_codes'
+)
 
 ROUTES_DIRECTORY = '/home/nelson/Documentos/Ubuntu_master/routes'
-
 ACTIVE_ROUTE = 'Test'
 
-
-#ACTIVE_ROUTE = 'test'
 WAYPOINT_RADIUS = 2.0
 START_YAW_DEG = 0.0
 
+CONTROL_PERIOD = 1.0
+INITIALIZATION_TIMEOUT = 150.0
 
-# ============================================================
-# ESTADO GLOBAL ROS / SERIAL
-# ============================================================
+save_data = True
 
-serial_mgr = cm.SerialManager()
-initial_pose = Odometry()
-state_msg = ModelState()
-set_state = None
-
-currentHeading = Float64()
-windDir = Float64()
-spHeading = Float64()
-result = Float64()
-heeling = 0.0
-
-waypointDistance = Float64()
-waypointIndex = Float64()
-last_rudder_action_deg = 0.0
-last_sail_action_deg = 0.0
-
-counter = 0
-time_counter = 0.0
-base = None
-
-tiempo_inicio = None
-tiempo_fin = None
-pose_recibida = False
+CSV_COLUMNS = [
+    'ID',
+    'time',
+    'x',
+    'y',
+    'speed',
+    'pitch',
+    'yaw',
+    'relative_wind',
+    'desired_heading',
+    'apparent_wind',
+    'waypoint_index',
+    'waypoint_x',
+    'waypoint_y',
+    'waypoint_distance',
+    'rudder_action',
+    'sail_action'
+]
 
 
 # ============================================================
-# MANEJO INTERNO DE LA RUTA
+# ROUTE MANAGEMENT
 # ============================================================
+
+def is_finite(value):
+    return not math.isnan(value) and not math.isinf(value)
+
+
+def load_route():
+    default_path = os.path.join(
+        ROUTES_DIRECTORY,
+        ACTIVE_ROUTE + '.json'
+    )
+
+    path = os.path.abspath(os.path.expanduser(
+        os.environ.get('SNN_ROUTE_FILE', default_path)
+    ))
+
+    with open(path, 'r') as route_file:
+        route = json.load(route_file)
+
+    if not isinstance(route, list) or len(route) < 2:
+        raise ValueError(
+            'The route must contain at least two [x, y, type] points'
+        )
+
+    for index, waypoint in enumerate(route):
+        if not isinstance(waypoint, list) or len(waypoint) != 3:
+            raise ValueError(
+                'Waypoint %d: expected [x, y, type]' % index
+            )
+
+        for value in waypoint:
+            if (isinstance(value, bool) or
+                    not isinstance(value, (int, float)) or
+                    not is_finite(value)):
+                raise ValueError(
+                    'Waypoint %d: values must be finite numbers' % index
+                )
+
+        # The current FPGA protocol does not transmit waypoint types.
+        if waypoint[2] != 0:
+            raise ValueError(
+                'Waypoint %d: the current FPGA controller '
+                'only supports type 0' % index
+            )
+
+    rospy.loginfo('FPGA route: %s', path)
+    return route
+
 
 class RouteManager(object):
     def __init__(self, route, waypoint_radius):
-        if len(route) < 2:
-            raise ValueError('La ruta debe tener al menos dos waypoints')
-
         self.route = route
         self.waypoint_radius = waypoint_radius
-        # El waypoint 0 es el punto inicial; navegamos hacia el 1.
+
+        # Point 0 defines the initial position.
+        # Point 1 is the first navigation target.
         self.index = 1
         self.finished = False
 
@@ -90,108 +124,53 @@ class RouteManager(object):
         return self.route[self.index]
 
     def update(self, x, y):
-        """
-        Revisa si el velero alcanzo el waypoint actual.
-        Si lo alcanzo, selecciona automaticamente el siguiente.
-
-        Retorna:
-            waypoint actual [x, y, waypoint_type]
-        """
         if self.finished:
             return self.route[-1]
 
-        wp = self.current_waypoint()
-        distance = math.hypot(wp[0] - x, wp[1] - y)
+        waypoint = self.current_waypoint()
+        distance = math.hypot(
+            waypoint[0] - x,
+            waypoint[1] - y
+        )
 
         if distance <= self.waypoint_radius:
             if self.index < len(self.route) - 1:
                 self.index += 1
-                wp = self.current_waypoint()
+                waypoint = self.current_waypoint()
+
                 rospy.loginfo(
-                    'Nuevo waypoint %d/%d -> (%.2f, %.2f), type=%d',
+                    'New waypoint %d/%d -> (%.2f, %.2f)',
                     self.index,
                     len(self.route) - 1,
-                    wp[0],
-                    wp[1],
-                    int(wp[2])
+                    waypoint[0],
+                    waypoint[1]
                 )
             else:
                 self.finished = True
-                rospy.loginfo('Ruta terminada.')
 
-        return wp
-
-
-def load_route(route_name):
-    path = os.path.join(ROUTES_DIRECTORY, route_name + '.json')
-
-    with open(path, 'r') as route_file:
-        route = json.load(route_file)
-
-    if not isinstance(route, list) or len(route) < 2:
-        raise ValueError('La ruta debe tener al menos dos waypoints')
-
-    for index, waypoint in enumerate(route):
-        if not isinstance(waypoint, list) or len(waypoint) != 3:
-            raise ValueError(
-                'Waypoint %d: se esperaba [x, y, waypoint_type]' % index
-            )
-
-        x, y, waypoint_type = waypoint
-        if any(
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or math.isnan(value)
-            or math.isinf(value)
-            for value in waypoint
-        ):
-            raise ValueError(
-                'Waypoint %d: los valores deben ser numeros finitos' % index
-            )
-
-        if int(waypoint_type) != waypoint_type:
-            raise ValueError(
-                'Waypoint %d: waypoint_type debe ser entero' % index
-            )
-
-    return route
-
-
-route_manager = RouteManager(
-    load_route(ACTIVE_ROUTE),
-    WAYPOINT_RADIUS
-)
+        return waypoint
 
 
 # ============================================================
-# FUNCIONES AUXILIARES
+# ANGLES AND SENSOR PREPROCESSING
 # ============================================================
-
-def get_pose(initial_pose_tmp):
-    global initial_pose, pose_recibida
-
-    initial_pose = initial_pose_tmp
-    pose_recibida = True
-
 
 def angle_saturation(angle):
-    """Satura un angulo en grados al rango [-180, 180)."""
-    while angle >= 180.0:
-        angle -= 360.0
-    while angle < -180.0:
-        angle += 360.0
-    return angle
+    """Wrap an angle in degrees to [-180, 180)."""
+    return (angle + 180.0) % 360.0 - 180.0
 
 
 def desired_heading_to_waypoint(x, y, waypoint):
-    """Heading geometrico desde la posicion actual hacia el waypoint."""
     dx = waypoint[0] - x
     dy = waypoint[1] - y
-    return angle_saturation(math.degrees(math.atan2(dy, dx)))
+
+    return angle_saturation(
+        math.degrees(math.atan2(dy, dx))
+    )
 
 
 def apparent_wind_angle(wind_x, wind_y, boat_vx_world, boat_vy_world):
-    """Viento aparente en coordenadas globales, expresado en grados."""
+    """Return the apparent wind direction in world coordinates."""
     apparent_x = wind_x - boat_vx_world
     apparent_y = wind_y - boat_vy_world
 
@@ -200,325 +179,481 @@ def apparent_wind_angle(wind_x, wind_y, boat_vx_world, boat_vy_world):
     )
 
 
-def reset_environment(yaw_rad):
-    global state_msg
-    global set_state
-    global tiempo_inicio, tiempo_fin, pose_recibida, time_counter
+def sensors_from_step(state, waypoint, wind_x, wind_y):
+    q = state.pose.orientation
+    quaternion = (q.x, q.y, q.z, q.w)
 
-    q = quaternion_from_euler(0, 0, yaw_rad)
-    initial = route_manager.route[0]
-
-    state_msg.model_name = 'sailboat'
-    state_msg.pose.position.x = initial[0]
-    state_msg.pose.position.y = initial[1]
-    state_msg.pose.position.z = 0
-    state_msg.pose.orientation.x = q[0]
-    state_msg.pose.orientation.y = q[1]
-    state_msg.pose.orientation.z = q[2]
-    state_msg.pose.orientation.w = q[3]
-
-    set_state(state_msg)
-
-    tiempo_inicio = None
-    tiempo_fin = None
-    time_counter = 0.0
-    pose_recibida = False    
-
-
-# ============================================================
-# CONTROL + UART
-# ============================================================
-
-def controller():
-    global counter
-    global time_counter
-    global currentHeading
-    global windDir
-    global spHeading
-    global result
-    global heeling
-    global base
-    global last_rudder_action_deg
-    global last_sail_action_deg
-    global waypointDistance
-    global waypointIndex
-    global tiempo_inicio, tiempo_fin
-
-    # --------------------------------------------------------
-    # 1. Abrir UART una sola vez
-    # --------------------------------------------------------
-    if not serial_mgr.connection or not serial_mgr.connection.is_open:
-        if not serial_mgr.initialize(SERIAL_DIRECTORY, SERIAL_PORT, SERIAL_TIMEOUT):
-            rospy.logerr('No se pudo abrir el puerto serial.')
-            counter = 0
-            return 0.0, 0.0
-
-    ahora = rospy.Time.now()
-
-    if not pose_recibida or ahora.to_sec() <= 0.0:
-        counter = 0
-        return 0.0, 0.0  # FPGA
-
-    if tiempo_inicio is None:
-        tiempo_inicio = ahora
-
-    instante = tiempo_fin if tiempo_fin is not None else ahora
-    time_counter = (instante - tiempo_inicio).to_sec()    
-
-    # --------------------------------------------------------
-    # 2. Leer estado del velero desde ROS
-    # --------------------------------------------------------
-    x_pos = initial_pose.pose.pose.position.x
-    y_pos = initial_pose.pose.pose.position.y
-    vx = initial_pose.twist.twist.linear.x
-    vy = initial_pose.twist.twist.linear.y
-
-    quaternion = (
-        initial_pose.pose.pose.orientation.x,
-        initial_pose.pose.pose.orientation.y,
-        initial_pose.pose.pose.orientation.z,
-        initial_pose.pose.pose.orientation.w
+    _, pitch, yaw = tf.transformations.euler_from_quaternion(
+        quaternion
     )
-    euler = tf.transformations.euler_from_quaternion(quaternion)
 
-    roll_deg = angle_saturation(math.degrees(euler[0]))
-    pitch_deg = angle_saturation(math.degrees(euler[1]))
-    yaw_deg = angle_saturation(math.degrees(euler[2]))
+    pitch_deg = angle_saturation(math.degrees(pitch))
+    yaw_deg = angle_saturation(math.degrees(yaw))
 
-    # Se conserva el signo usado por el visualizador/control antiguo.
-    currentHeading.data = math.radians(-yaw_deg)
-
-    # --------------------------------------------------------
-    # 3. Ruta interna: waypoint actual y siguiente waypoint
-    # --------------------------------------------------------
-    waypoint = route_manager.update(x_pos, y_pos)
-
-    distance = math.hypot(waypoint[0] - x_pos, waypoint[1] - y_pos)
-
-    waypointDistance.data = distance
-    waypointIndex.data = route_manager.index
-
-    if route_manager.finished and tiempo_fin is not None:
-        counter = 0
-        result.data = 1
-        return 0.0, 0.0
-
-    desired_heading_deg = desired_heading_to_waypoint(x_pos, y_pos, waypoint)
-    waypoint_type = int(waypoint[2])
-    spHeading.data = desired_heading_deg
-
-    # --------------------------------------------------------
-    # 4. Viento y velocidad
-    # --------------------------------------------------------
-    wind_x = rospy.get_param('/uwsim/wind/x')
-    wind_y = rospy.get_param('/uwsim/wind/y')
-
-    global_wind_deg = angle_saturation(math.degrees(math.atan2(wind_y, wind_x)))
-
-    # Viento relativo al heading del velero.
-    relative_wind_deg = angle_saturation(global_wind_deg - yaw_deg)
-
-    speed = math.sqrt(vx * vx + vy * vy)
-
-    # El tópico state entrega velocidad en los ejes del barco.
+    # The step service returns velocities in the boat frame.
     velocity_body = [
-        initial_pose.twist.twist.linear.x,
-        initial_pose.twist.twist.linear.y,
-        initial_pose.twist.twist.linear.z,
+        state.twist.linear.x,
+        state.twist.linear.y,
+        state.twist.linear.z
     ]
 
-    # Transformarla a los mismos ejes globales usados por el viento.
+    # Convert velocity to the world frame used by the wind parameters.
     rotation = tf.transformations.quaternion_matrix(quaternion)
     velocity_world = rotation[:3, :3].dot(velocity_body)
 
-    apparent_wind_deg = apparent_wind_angle(
-        wind_x,
-        wind_y,
-        velocity_world[0],
-        velocity_world[1]
+    global_wind_deg = math.degrees(
+        math.atan2(wind_y, wind_x)
     )
 
-    heeling = angle_saturation(global_wind_deg + 180.0)
-    windDir.data = math.radians(angle_saturation(relative_wind_deg + 180.0))
+    sensors = {
+        'S1': pitch_deg,
+        'S2': yaw_deg,
+        'S3': angle_saturation(global_wind_deg - yaw_deg),
+        'S4': desired_heading_to_waypoint(
+            state.pose.position.x,
+            state.pose.position.y,
+            waypoint
+        ),
+        'S5': apparent_wind_angle(
+            wind_x,
+            wind_y,
+            velocity_world[0],
+            velocity_world[1]
+        ),
+        'S6': math.hypot(
+            velocity_body[0],
+            velocity_body[1]
+        )
+    }
 
-    # --------------------------------------------------------
-    # 5. Guardado opcional
-    # --------------------------------------------------------
-    counter += 1
-    #time_counter += 1.0 / rate_value
+    if not all(is_finite(value) for value in sensors.values()):
+        raise RuntimeError('Sensor values must be finite')
 
-    if save_data and base is not None:
-        base.append_data([time_counter,x_pos,y_pos,speed,pitch_deg,yaw_deg,relative_wind_deg,desired_heading_deg,apparent_wind_deg,route_manager.index,waypoint[0],waypoint[1],distance,last_rudder_action_deg,last_sail_action_deg])
+    return sensors
 
-    if route_manager.finished:
-        tiempo_fin = ahora
-        time_counter = (tiempo_fin - tiempo_inicio).to_sec()
 
-        rospy.loginfo(
-            'RUTA COMPLETADA FPGA: %.3f segundos simulados',
-            time_counter
+# ============================================================
+# LOCKSTEP INITIALIZATION
+# ============================================================
+
+def initialize_from_route(route, yaw_deg=0.0):
+    initial_x = float(route[0][0])
+    initial_y = float(route[0][1])
+    initial_yaw = math.radians(float(yaw_deg))
+
+    for value in (initial_x, initial_y, initial_yaw):
+        if not is_finite(value):
+            raise ValueError('Initial pose must contain finite values')
+
+    rospy.wait_for_service(
+        '/snn_step/advance',
+        timeout=INITIALIZATION_TIMEOUT
+    )
+
+    for name in ('sail_joint', 'sail_joint_2'):
+        rospy.wait_for_service(
+            '/snn_step/' + name,
+            timeout=INITIALIZATION_TIMEOUT
         )
 
-        counter = 0
-        result.data = 1
-        return 0.0, 0.0
+    # Plugins load concurrently. Wait for the joint PID configuration.
+    deadline = time.time() + INITIALIZATION_TIMEOUT
 
-    # --------------------------------------------------------
-    # 6. Enviar EXACTAMENTE 7 valores a la FPGA
-    # --------------------------------------------------------
-    if not save_data or counter >= (rate_value // control_rate):
-        counter = 0
+    while True:
+        if rospy.is_shutdown():
+            raise RuntimeError('Initialization interrupted')
 
-        datos = {
-            'S1': pitch_deg,
-            'S2': yaw_deg,
-            'S3': relative_wind_deg,
-            'S4': desired_heading_deg,
-            'S5': apparent_wind_deg,
-            'S6': speed
-            #'S7': waypoint_type,
-        }
-
-        rospy.loginfo(
-            'TX FPGA: pitch=%.2f yaw=%.2f relWind=%.4f desired=%.4f appWind=%.2f speed=%.3f', #wp=%d',
-            datos['S1'],
-            datos['S2'],
-            datos['S3'],
-            datos['S4'],
-            datos['S5'],
-            datos['S6'],
-            #datos['S7']
+        config = rospy.get_param(
+            '/sailboat/controllers/config/joints',
+            {}
         )
+        names = config.get('name', [])
 
-        try:
-            if not serial_mgr.write_data(datos, message_type=0x01):
-                rospy.logwarn('No se pudo escribir en el puerto serial.')
-                return 0.0, 0.0
+        if (2 <= len(names) <= 3 and
+                all(len(config.get(key, [])) == len(names)
+                    for key in ('lower', 'upper', 'velocity'))):
+            break
 
-            band, recibe = serial_mgr.read_data()
-
-
-            rospy.loginfo('RX FPGA: band=%s data=%s',band,str(recibe))
-
-            # ------------------------------------------------
-            # 7. Recibir SOLO 2 valores desde la FPGA
-            # ------------------------------------------------
-            if not band:
-                rospy.logwarn('No se recibio una respuesta valida de la FPGA.')
-                return 0.0, 0.0
-
-            rudder_angle_deg = recibe['A1']
-            sail_angle_deg = recibe['A2']
-
-            last_rudder_action_deg = rudder_angle_deg
-            last_sail_action_deg = sail_angle_deg
-
-
-            result.data = 0
-            counter = 0
-
-            return (
-                math.radians(rudder_angle_deg),
-                math.radians(sail_angle_deg)
+        if time.time() > deadline:
+            raise RuntimeError(
+                'Joint PID initialization did not complete'
             )
 
-        except Exception as exc:
-            rospy.logerr('Error de comunicacion con la FPGA: %s', str(exc))
-            return 0.0, 0.0
+        # Sleep in wall time: the simulation clock remains at zero.
+        time.sleep(0.02)
 
-    return 0.0, 0.0
+    advance = rospy.ServiceProxy('/snn_step/advance', Step)
 
+    state = advance(StepRequest(
+        sequence=0,
+        initialize=True,
+        steps=0,
+        initial_x=initial_x,
+        initial_y=initial_y,
+        initial_yaw=initial_yaw
+    ))
 
-# ============================================================
-# MENSAJES ROS
-# ============================================================
+    if not state.success:
+        raise RuntimeError(state.status_message)
 
-def rudder_ctrl_msg():
-    rudder_angle, sail_angle = controller()
-
-    msg = JointState()
-    msg.header = Header()
-
-    # La FPGA retorna un solo angulo de vela. Si el modelo tiene dos
-    # articulaciones de vela, ambas reciben el mismo valor.
-    msg.name = ['rudder_joint', 'sail_joint', 'sail_joint_2']
-    msg.position = [rudder_angle, sail_angle, sail_angle]
-    msg.velocity = []
-    msg.effort = []
-
-    return msg, sail_angle
-
-
-def talker_ctrl():
-    global rate_value
-    global counter
-    global base
-
-    rate = rospy.Rate(rate_value)
-
-    pub_sail = rospy.Publisher('/sail/angleLimits', Float64, queue_size=10)
-    pub_rudder = rospy.Publisher('joint_setpoint', JointState, queue_size=10)
-    pub_result = rospy.Publisher('move_usv/result', Float64, queue_size=10)
-    pub_heading = rospy.Publisher('currentHeading', Float64, queue_size=10)
-    pub_windDir = rospy.Publisher('windDirection', Float64, queue_size=10)
-    pub_heeling = rospy.Publisher('heeling', Float64, queue_size=10)
-    pub_spHeading = rospy.Publisher('spHeading', Float64, queue_size=10)
-    pub_wp_distance = rospy.Publisher('waypoint_distance', Float64, queue_size=10)
-    pub_wp_index = rospy.Publisher('waypoint_index', Float64, queue_size=10)
-
-    # Ya no existe move_usv/goal: la ruta es interna.
-    rospy.Subscriber('state', Odometry, get_pose)
-
-    if save_data:
-        base = db.text_files(
-            new_file=True,
-            file_name='Test_FPGA',
-            path=DATA_DIRECTORY,
-            structure=['time','x','y','speed','pitch','yaw','relative_wind','desired_heading','apparent_wind','waypoint_index','waypoint_x','waypoint_y','waypoint_distance','rudder_action','sail_action']
+    if (state.sequence != 0 or
+            state.iteration != 0 or
+            state.sim_time.to_sec() != 0.0):
+        raise RuntimeError(
+            'Trial did not start at time zero and iteration zero'
         )
 
+    x = state.pose.position.x
+    y = state.pose.position.y
+
+    if (not is_finite(x) or not is_finite(y) or
+            math.hypot(x - initial_x, y - initial_y) > 1e-6):
+        raise RuntimeError(
+            'Initial position does not match the route'
+        )
+
+    rospy.loginfo(
+        'FPGA lockstep initialized: x=%.3f, y=%.3f, yaw=%.3f deg',
+        initial_x,
+        initial_y,
+        yaw_deg
+    )
+
+    return advance, state
+
+
+def get_steps_per_control(state):
+    step_size = state.step_size
+
+    if not is_finite(step_size) or step_size <= 0.0:
+        raise RuntimeError('Invalid physics step size')
+
+    steps = int(round(CONTROL_PERIOD / step_size))
+
+    if (steps <= 0 or steps > 100000 or
+            abs(steps * step_size - CONTROL_PERIOD) > 1e-9):
+        raise RuntimeError(
+            'Physics step size must divide the control period '
+            'within the step service limits'
+        )
+
+    return steps
+
+
+# ============================================================
+# FPGA COMMUNICATION
+# ============================================================
+
+def request_action(serial_mgr, sensors):
+    if not serial_mgr.write_data(sensors, message_type=0x01):
+        raise RuntimeError('Cannot send sensors to the FPGA')
+
+    success, action = serial_mgr.read_data()
+
+    if not success or set(action) != set(('A1', 'A2')):
+        raise RuntimeError('Incomplete or invalid FPGA response')
+
+    rudder_deg = float(action['A1'])
+    sail_deg = float(action['A2'])
+
+    for value, limit in (
+            (rudder_deg, 45.0),
+            (sail_deg, 90.0)):
+        if not is_finite(value) or abs(value) > limit:
+            raise RuntimeError(
+                'FPGA action is outside the allowed range'
+            )
+
+    rospy.loginfo(
+        'RX FPGA: rudder=%.2f deg, sail=%.2f deg',
+        rudder_deg,
+        sail_deg
+    )
+
+    return rudder_deg, sail_deg
+
+
+# ============================================================
+# TELEMETRY
+# ============================================================
+
+def create_publishers():
+    names = (
+        'move_usv/result',
+        'currentHeading',
+        'windDirection',
+        'heeling',
+        'spHeading',
+        'waypoint_distance',
+        'waypoint_index'
+    )
+
+    return {
+        name: rospy.Publisher(name, Float64, queue_size=10)
+        for name in names
+    }
+
+
+def publish_telemetry(
+        publishers, sensors, route_manager, distance,
+        wind_x, wind_y):
+    global_wind_deg = math.degrees(
+        math.atan2(wind_y, wind_x)
+    )
+
+    values = {
+        'move_usv/result': 1.0 if route_manager.finished else 0.0,
+        'currentHeading': math.radians(-sensors['S2']),
+        'windDirection': math.radians(
+            angle_saturation(sensors['S3'] + 180.0)
+        ),
+        'heeling': angle_saturation(global_wind_deg + 180.0),
+        'spHeading': sensors['S4'],
+        'waypoint_distance': distance,
+        'waypoint_index': float(route_manager.index)
+    }
+
+    for name, value in values.items():
+        publishers[name].publish(Float64(data=value))
+
+
+# ============================================================
+# CSV RECORDING
+# ============================================================
+
+def create_output(file_name):
+    if not save_data:
+        return None, None
+
+    directory = os.path.join(DATA_DIRECTORY, 'data_result')
+
+    if not os.path.isdir(directory):
+        os.makedirs(directory)
+
+    path = os.path.join(directory, file_name + '.csv')
+
+    # Python 2 csv requires binary mode.
+    # Python 3 csv requires newline='' to manage line endings.
+    if sys.version_info[0] == 2:
+        stream = open(path, 'wb')
+    else:
+        stream = open(path, 'w', newline='')
+
+    try:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=CSV_COLUMNS,
+            lineterminator='\n'
+        )
+        writer.writeheader()
+        stream.flush()
+    except Exception:
+        stream.close()
+        raise
+
+    rospy.loginfo('FPGA results: %s', path)
+    return stream, writer
+
+
+def record_sample(
+        stream, writer, sample_id, state, sensors,
+        route_manager, waypoint, distance, rudder_deg, sail_deg):
+    if writer is None:
+        return
+
+    writer.writerow({
+        'ID': sample_id,
+        'time': state.sim_time.to_sec(),
+        'x': state.pose.position.x,
+        'y': state.pose.position.y,
+        'speed': sensors['S6'],
+        'pitch': sensors['S1'],
+        'yaw': sensors['S2'],
+        'relative_wind': sensors['S3'],
+        'desired_heading': sensors['S4'],
+        'apparent_wind': sensors['S5'],
+        'waypoint_index': route_manager.index,
+        'waypoint_x': waypoint[0],
+        'waypoint_y': waypoint[1],
+        'waypoint_distance': distance,
+        'rudder_action': rudder_deg,
+        'sail_action': sail_deg
+    })
+
+    # Make each completed row available to the trial supervisor.
+    stream.flush()
+
+
+# ============================================================
+# LOCKSTEP CONTROL LOOP
+# ============================================================
+
+def run_loop(
+        advance, state, steps_per_control, serial_mgr,
+        route_manager, publishers, stream, writer, wind_x, wind_y):
+    sample_id = 1
+
     while not rospy.is_shutdown():
-        try:
-            final = rudder_ctrl_msg()
+        x = state.pose.position.x
+        y = state.pose.position.y
 
-            if not save_data or counter == 0:
-                pub_rudder.publish(final[0])
-                pub_sail.publish(final[1])
+        if not is_finite(x) or not is_finite(y):
+            raise RuntimeError('Boat position must be finite')
 
-            pub_result.publish(result)
-            pub_heading.publish(currentHeading)
-            pub_windDir.publish(windDir)
-            pub_heeling.publish(heeling)
-            pub_spHeading.publish(spHeading)
-            pub_wp_distance.publish(waypointDistance)
-            pub_wp_index.publish(waypointIndex)
+        waypoint = route_manager.update(x, y)
 
-            rate.sleep()
+        distance = math.hypot(
+            waypoint[0] - x,
+            waypoint[1] - y
+        )
 
-        except rospy.ROSInterruptException:
-            rospy.logerr('ROS Interrupt Exception!')
-        except rospy.ROSTimeMovedBackwardsException:
-            rospy.logerr('ROS Time Backwards!')
+        sensors = sensors_from_step(
+            state,
+            waypoint,
+            wind_x,
+            wind_y
+        )
+
+        elapsed = state.sim_time.to_sec()
+
+        # No new action is requested after reaching the final waypoint.
+        rudder_deg = ''
+        sail_deg = ''
+
+        if not route_manager.finished:
+            rudder_deg, sail_deg = request_action(
+                serial_mgr,
+                sensors
+            )
+
+        # Each normal row records the action for the following interval.
+        # The final row has empty action fields because no step follows.
+        record_sample(
+            stream,
+            writer,
+            sample_id,
+            state,
+            sensors,
+            route_manager,
+            waypoint,
+            distance,
+            rudder_deg,
+            sail_deg
+        )
+        sample_id += 1
+
+        publish_telemetry(
+            publishers,
+            sensors,
+            route_manager,
+            distance,
+            wind_x,
+            wind_y
+        )
+
+        if route_manager.finished:
+            # Preserve the message expected by the existing trial runner.
+            rospy.loginfo(
+                'RUTA COMPLETADA FPGA: %.3f segundos simulados',
+                elapsed
+            )
+            return
+
+        if rospy.is_shutdown():
+            return
+
+        next_sequence = state.sequence + 1
+
+        # Do not retry: a lost response may follow a completed step.
+        next_state = advance(StepRequest(
+            sequence=next_sequence,
+            initialize=False,
+            steps=steps_per_control,
+            rudder=math.radians(rudder_deg),
+            sail=math.radians(sail_deg),
+            sail2=math.radians(sail_deg)
+        ))
+
+        if not next_state.success:
+            raise RuntimeError(next_state.status_message)
+
+        if next_state.sequence != next_sequence:
+            raise RuntimeError('Physics step sequence mismatch')
+
+        if next_state.iteration != state.iteration + steps_per_control:
+            raise RuntimeError('Unexpected physics iteration count')
+
+        time_increment = next_state.sim_time.to_sec() - elapsed
+
+        if abs(time_increment - CONTROL_PERIOD) > 1e-8:
+            raise RuntimeError('Unexpected simulated time increment')
+
+        state = next_state
 
 
 # ============================================================
 # MAIN
 # ============================================================
 
-if __name__ == '__main__':
+def main():
     rospy.init_node('usv_simple_ctrl', anonymous=True)
 
-    state_msg = ModelState()
+    route = load_route()
+    route_manager = RouteManager(route, WAYPOINT_RADIUS)
 
-    rospy.wait_for_service('/gazebo/set_model_state')
-    set_state = rospy.ServiceProxy('/gazebo/set_model_state', SetModelState)
+    advance, state = initialize_from_route(
+        route,
+        yaw_deg=START_YAW_DEG
+    )
 
-    reset_environment(math.radians(START_YAW_DEG))
+    steps_per_control = get_steps_per_control(state)
 
-    if not save_data:
-        rate_value = control_rate
+    # Keep the wind configuration fixed throughout this trial.
+    wind_x = float(rospy.get_param('/uwsim/wind/x'))
+    wind_y = float(rospy.get_param('/uwsim/wind/y'))
+
+    if not is_finite(wind_x) or not is_finite(wind_y):
+        raise ValueError('Wind components must be finite')
+
+    publishers = create_publishers()
+    serial_mgr = cm.SerialManager()
+
+    stream, writer = create_output(file_name='Test_FPGA')
 
     try:
-        talker_ctrl()
+        # The FPGA must already have been reset before this trial.
+        if not serial_mgr.initialize(
+                SERIAL_DIRECTORY,
+                SERIAL_PORT,
+                SERIAL_TIMEOUT):
+            raise RuntimeError('Cannot open the FPGA serial port')
+
+        run_loop(
+            advance,
+            state,
+            steps_per_control,
+            serial_mgr,
+            route_manager,
+            publishers,
+            stream,
+            writer,
+            wind_x,
+            wind_y
+        )
+
+    finally:
+        try:
+            serial_mgr.invalidate_connection()
+        finally:
+            if stream is not None:
+                stream.close()
+
+
+if __name__ == '__main__':
+    try:
+        main()
     except rospy.ROSInterruptException:
         pass
+    except Exception as exc:
+        rospy.logerr('FPGA lockstep trial failed: %s', str(exc))
+        raise

@@ -61,7 +61,64 @@ def load_route(path):
                     or math.isnan(value) or math.isinf(value)):
                 raise ValueError('Route coordinates and types must be finite numbers')
     return route
+    
+def initialize_from_route(route, yaw_deg=0.0):
+    initial_x = float(route[0][0])
+    initial_y = float(route[0][1])
+    initial_yaw = math.radians(float(yaw_deg))
 
+    for value in (initial_x, initial_y, initial_yaw):
+        if math.isnan(value) or math.isinf(value):
+            raise ValueError('Initial pose must contain finite values')
+
+    rospy.wait_for_service('/snn_step/advance', timeout=150)
+
+    for name in ('sail_joint', 'sail_joint_2'):
+        rospy.wait_for_service('/snn_step/' + name, timeout=150)
+
+    # Plugins load concurrently. Wait for the joint PID configuration.
+    deadline = time.time() + 150.0
+    while True:
+        if rospy.is_shutdown():
+            raise RuntimeError('Initialization interrupted')
+
+        config = rospy.get_param('/sailboat/controllers/config/joints', {})
+        names = config.get('name', [])
+
+        if (2 <= len(names) <= 3 and
+                all(len(config.get(key, [])) == len(names)
+                    for key in ('lower', 'upper', 'velocity'))):
+            break
+
+        if time.time() > deadline:
+            raise RuntimeError('Joint PID initialization did not complete')
+
+        # Sleep in wall time: the simulation clock remains at zero.
+        time.sleep(0.02)
+
+    advance = rospy.ServiceProxy('/snn_step/advance', Step)
+
+    state = advance(StepRequest(
+        sequence=0,
+        initialize=True,
+        steps=0,
+        initial_x=initial_x,
+        initial_y=initial_y,
+        initial_yaw=initial_yaw
+    ))
+
+    if not state.success:
+        raise RuntimeError(state.status_message)
+
+    if (state.sequence != 0 or state.iteration != 0 or
+            state.sim_time.to_sec() != 0.0):
+        raise RuntimeError('Trial did not start at time zero and iteration zero')
+
+    if math.hypot(state.pose.position.x - initial_x,
+                  state.pose.position.y - initial_y) > 1e-6:
+        raise RuntimeError('Initial position does not match the route')
+
+    return advance, state
 
 def read_action(port, first_sample):
     success, action = port.read_data()
@@ -144,33 +201,16 @@ def main():
     if math.isnan(serial_timeout) or math.isinf(serial_timeout) or serial_timeout <= 0:
         raise ValueError('SNN_SERIAL_TIMEOUT must be positive and finite')
     save('route_used.json', route)
+    save('route_used.json', route)
     rospy.loginfo('Lockstep route: %s; results: %s', route_path, RUN)
-    rospy.wait_for_service('/snn_step/advance', timeout=150)
-    for name in ('sail_joint', 'sail_joint_2'):
-        rospy.wait_for_service('/snn_step/' + name, timeout=150)
-    # Model plugins load concurrently. The stepping service can appear before
-    # freefloating_gazebo_control finishes publishing joint limits and PID gains.
-    deadline = monotonic() + 150
-    while True:
-        config = rospy.get_param('/sailboat/controllers/config/joints', {})
-        names = config.get('name', [])
-        if (2 <= len(names) <= 3 and all(len(config.get(key, [])) == len(names)
-                                   for key in ('lower', 'upper', 'velocity'))):
-            break
-        if monotonic() > deadline or rospy.is_shutdown():
-            raise RuntimeError('Original joint controller did not finish initialization')
-        time.sleep(0.02)
-    advance = rospy.ServiceProxy('/snn_step/advance', Step)
-    state = advance(StepRequest(sequence=0, initialize=True, steps=0))
-    if not state.success:
-        raise RuntimeError(state.status_message)
-    if math.hypot(state.pose.position.x - route[0][0],
-                  state.pose.position.y - route[0][1]) > 0.02:
-        raise RuntimeError('First route point must match the plugin start position (240, 100)')
+
+    advance, state = initialize_from_route(route, yaw_deg=0.0)
+
     steps_per_control = int(round(1.0 / state.step_size))
     if steps_per_control <= 0 or abs(steps_per_control * state.step_size - 1.0) > 1e-9:
         raise RuntimeError('Physics step must divide the 1 Hz SNN period')
-    wind = math.atan2(rospy.get_param('/uwsim/wind/y'), rospy.get_param('/uwsim/wind/x'))
+
+    wind = math.atan2(rospy.get_param('/uwsim/wind/y'),rospy.get_param('/uwsim/wind/x'))
     port = cm.SerialManager()
     deadline = monotonic() + 150
     while not os.path.exists(os.path.join(NETWORK, 'interface_2')):

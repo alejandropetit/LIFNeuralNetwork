@@ -31,9 +31,13 @@ class SnnStepPlugin : public ModelPlugin {
   double step_size_ = 0;
   std::string update_error_;
 
-  void Initialize() {
+  void Initialize(double initial_x, double initial_y, double initial_yaw) {
     if (initialized_ || world_->GetSimTime().Double() != 0)
       throw std::runtime_error("Initialize requires a fresh, paused simulation at t=0");
+    if (!std::isfinite(initial_x) || !std::isfinite(initial_y) || !std::isfinite(initial_yaw)) {
+      throw std::runtime_error("Initial position and yaw must be finite");
+    }    
+
     ros::NodeHandle control("/sailboat/controllers");
     if (control.hasParam("config/body"))
       throw std::runtime_error("Lockstep currently supports joint control only");
@@ -53,7 +57,7 @@ class SnnStepPlugin : public ModelPlugin {
     pid_stride_ = static_cast<unsigned int>(std::lround(0.01 / step_size_));
     if (!pid_stride_ || std::abs(pid_stride_ * step_size_ - 0.01) > 1e-12)
       throw std::runtime_error("Physics dt must divide the original 0.01 s PID period");
-    model_->SetWorldPose(math::Pose(240, 100, 0, 0, 0, 0));
+    model_->SetWorldPose(math::Pose(initial_x, initial_y, 0, 0, 0, initial_yaw));
     model_->SetLinearVel(math::Vector3::Zero);
     model_->SetAngularVel(math::Vector3::Zero);
     for (auto &joint : joints_) {
@@ -125,7 +129,7 @@ class SnnStepPlugin : public ModelPlugin {
       if (request.initialize) {
         std::lock_guard<std::mutex> guard(mutex_);
         if (request.sequence || request.steps) throw std::runtime_error("Invalid initialization request");
-        Initialize();
+        Initialize(request.initial_x, request.initial_y, request.initial_yaw);
         Snapshot(response);
       } else {
         if (!initialized_ || request.sequence != sequence_ + 1 || !request.steps || request.steps > 100000)

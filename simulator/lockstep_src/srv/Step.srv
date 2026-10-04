@@ -4,6 +4,9 @@ uint32 steps
 float64 rudder
 float64 sail
 float64 sail2
+float64 initial_x
+float64 initial_y
+float64 initial_yaw
 ---
 bool success
 string status_message
