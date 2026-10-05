@@ -525,6 +525,27 @@ def run_loop(
                 serial_mgr,
                 sensors
             )
+            
+            if elapsed <= 4.0:
+                yaw_q = round(sensors['S2'] * 128) / 128.0
+                apparent_q = round(sensors['S5'] * 128) / 128.0
+
+                sum_angle_q = angle_saturation(
+                    apparent_q + yaw_q
+                )
+                sail_index = int(
+                    (36 * (sum_angle_q + 180.0)) // 360
+                )
+
+                rospy.loginfo(
+                    'SAIL_DEBUG FPGA t=%.0f yaw=%.9f '
+                    'sum_angle=%.9f index=%d action=%s',
+                    elapsed,
+                    yaw_q,
+                    sum_angle_q,
+                    sail_index,
+                    sail_deg
+                )            
 
         # Each normal row records the action for the following interval.
         # The final row has empty action fields because no step follows.

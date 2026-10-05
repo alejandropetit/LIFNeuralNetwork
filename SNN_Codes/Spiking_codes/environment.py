@@ -354,6 +354,24 @@ class sailboat_environment(ts.train_test_scenarios):
                     reward=0
                 )
             )
+        debug_sample = getattr(self, '_debug_sample', 0)
+
+        if debug_sample < 5:
+            sail_inputs = self.n_data[1]
+            sail_index = sail_inputs.index(max(sail_inputs))
+
+            print(
+                "SAIL_DEBUG PY sample={} yaw={:.9f} "
+                "sum_angle={:.9f} index={} action={}".format(
+                    debug_sample,
+                    data[5],
+                    self.sum_angle,
+                    sail_index,
+                    control_action[1]
+                )
+            )
+
+        self._debug_sample = debug_sample + 1
 
         control_action[2] = control_action[1]
         self.save_data(data, control_action)
