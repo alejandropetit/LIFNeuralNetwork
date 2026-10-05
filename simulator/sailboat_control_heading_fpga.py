@@ -488,9 +488,55 @@ def record_sample(
 # LOCKSTEP CONTROL LOOP
 # ============================================================
 
+class PowerMeasurement(object):
+    """Optional wall-time markers; UART data and simulation steps are unchanged."""
+
+    def __init__(self):
+        self.path = os.environ.get('SNN_POWER_MARKERS_FILE')
+        self.events = []
+        self.started = None
+        # Python 2.7 on Linux exposes elapsed real time through os.times().
+        self.clock = getattr(time, 'monotonic', lambda: os.times()[4])
+
+    def mark(self, event, sim_time):
+        if not self.path:
+            return
+        if event == 'END' and self.started is None:
+            raise RuntimeError('Route completed without a measurement START')
+        now = self.clock()
+        if event == 'START':
+            self.started = now
+        entry = {'event': event, 'unix_time': time.time(),
+                 'simulation_seconds': sim_time,
+                 'elapsed_real_seconds': (None if self.started is None
+                                          else now - self.started)}
+        self.events.append(entry)
+        # Publish a complete snapshot for the external observer.
+        with open(self.path + '.tmp', 'w') as output:
+            json.dump(self.events, output)
+        os.rename(self.path + '.tmp', self.path)
+        rospy.loginfo('POWER_MEASUREMENT %s unix=%.6f sim=%s',
+                      event, entry['unix_time'], sim_time)
+
+    def begin(self, sim_time):
+        if not self.path:
+            return
+        delay = float(os.environ.get('SNN_POWER_LEAD_SECONDS', '10'))
+        if not is_finite(delay) or not 0 <= delay <= 600:
+            raise ValueError('Power measurement lead time must be between 0 and 600 seconds')
+        self.mark('READY', sim_time)
+        deadline = self.clock() + delay
+        while self.clock() < deadline:
+            if rospy.is_shutdown():
+                raise RuntimeError('Power measurement interrupted before start')
+            time.sleep(min(0.1, max(0.0, deadline - self.clock())))
+        self.mark('START', sim_time)
+
+
 def run_loop(
         advance, state, steps_per_control, serial_mgr,
-        route_manager, publishers, stream, writer, wind_x, wind_y):
+        route_manager, publishers, stream, writer, wind_x, wind_y,
+        measurement=None):
     sample_id = 1
 
     while not rospy.is_shutdown():
@@ -521,6 +567,8 @@ def run_loop(
         sail_deg = ''
 
         if not route_manager.finished:
+            if sample_id == 1 and measurement is not None:
+                measurement.begin(elapsed)
             rudder_deg, sail_deg = request_action(
                 serial_mgr,
                 sensors
@@ -573,6 +621,8 @@ def run_loop(
         )
 
         if route_manager.finished:
+            if measurement is not None:
+                measurement.mark('END', elapsed)
             # Preserve the message expected by the existing trial runner.
             rospy.loginfo(
                 'RUTA COMPLETADA FPGA: %.3f segundos simulados',
@@ -640,6 +690,7 @@ def main():
     serial_mgr = cm.SerialManager()
 
     stream, writer = create_output(file_name='Test_FPGA')
+    measurement = PowerMeasurement()
 
     try:
         # The FPGA must already have been reset before this trial.
@@ -659,15 +710,20 @@ def main():
             stream,
             writer,
             wind_x,
-            wind_y
+            wind_y,
+            measurement
         )
 
     finally:
         try:
-            serial_mgr.invalidate_connection()
+            if measurement.events and measurement.events[-1]['event'] != 'END':
+                measurement.mark('ABORT', None)
         finally:
-            if stream is not None:
-                stream.close()
+            try:
+                serial_mgr.invalidate_connection()
+            finally:
+                if stream is not None:
+                    stream.close()
 
 
 if __name__ == '__main__':
