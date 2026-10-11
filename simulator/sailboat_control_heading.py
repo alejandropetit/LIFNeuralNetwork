@@ -181,15 +181,75 @@ def sensors_from_state(state, wind_direction):
             'S7': -heading, 'S8': relative_wind}
 
 
+def simulation_mode():
+    mode = os.environ.get('SNN_SIM_MODE', 'lockstep').strip().lower()
+    if mode not in ('lockstep', 'continuous'):
+        raise ValueError('SNN_SIM_MODE must be lockstep or continuous')
+    return mode
+
+
+class ContinuousControl(object):
+    def __init__(self, service, request_type):
+        self.service = service
+        self.request_type = request_type
+        self.sequence = 0
+
+    def call(self, command, action=None):
+        request = self.request_type(command=command)
+        if action is not None:
+            request.sequence = self.sequence + 1
+            request.rudder = math.radians(action['A1'])
+            request.sail = math.radians(action['A2'])
+            request.sail2 = math.radians(action['A3'])
+        result = self.service(request)
+        if not result.success:
+            raise RuntimeError(result.status_message)
+        if action is not None:
+            if result.sequence != request.sequence:
+                raise RuntimeError('Continuous action sequence mismatch')
+            self.sequence = request.sequence
+        return result
+
+    def start(self):
+        return self.call(self.request_type.START, dict(A1=0, A2=0, A3=0))
+
+    def snapshot(self):
+        return self.call(self.request_type.SNAPSHOT)
+
+    def apply(self, action):
+        return self.call(self.request_type.APPLY, action)
+
+    def stop(self):
+        return self.call(self.request_type.STOP)
+
+    def wait_until(self, target):
+        # Only the bridge waits for the next sample; Gazebo remains unpaused.
+        state = self.snapshot()
+        while state.sim_time.to_sec() < target and not rospy.is_shutdown():
+            time.sleep(0.01)
+            state = self.snapshot()
+        return state
+
+
+def run_continuous(control, wind, port, route, tracker, max_sim):
+    try:
+        state = control.start()
+        run_loop(None, state, None, wind, port, route, tracker, max_sim,
+                 continuous=control)
+    finally:
+        control.stop()  # Includes serial failures, completion and Ctrl+C.
+
+
 def main():
     global RUN
+    mode = simulation_mode()
     rospy.init_node('usv_simple_ctrl', anonymous=True)
     route_path = os.path.abspath(os.path.expanduser(
         os.environ.get('SNN_ROUTE_FILE', DEFAULT_ROUTE)))
     route = load_route(route_path)
     tracker = RouteProgress(route)
     output_default = os.path.join(os.path.dirname(os.path.dirname(NETWORK)),
-        'results', 'lockstep', datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        'results', mode, datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
         + '_' + str(os.getpid()))
     RUN = os.path.abspath(os.path.expanduser(os.environ.get('SNN_RUN_DIR', output_default)))
     if not os.path.isdir(RUN):
@@ -201,10 +261,18 @@ def main():
     if math.isnan(serial_timeout) or math.isinf(serial_timeout) or serial_timeout <= 0:
         raise ValueError('SNN_SERIAL_TIMEOUT must be positive and finite')
     save('route_used.json', route)
-    save('route_used.json', route)
-    rospy.loginfo('Lockstep route: %s; results: %s', route_path, RUN)
+    save('configuration.json', dict(simulation_mode=mode, control_period=1.0))
+    rospy.loginfo('Simulation mode: %s; route: %s; results: %s', mode, route_path, RUN)
 
     advance, state = initialize_from_route(route, yaw_deg=0.0)
+
+    continuous = None
+    if mode == 'continuous':
+        # Lazy import keeps lockstep usable with an older compiled service package.
+        from snn_lockstep.srv import Continuous, ContinuousRequest
+        rospy.wait_for_service('/snn_step/continuous', timeout=150)
+        continuous = ContinuousControl(
+            rospy.ServiceProxy('/snn_step/continuous', Continuous), ContinuousRequest)
 
     steps_per_control = int(round(1.0 / state.step_size))
     if steps_per_control <= 0 or abs(steps_per_control * state.step_size - 1.0) > 1e-9:
@@ -221,12 +289,16 @@ def main():
         raise RuntimeError('Cannot open the SNN virtual serial port')
 
     try:
-        run_loop(advance, state, steps_per_control, wind, port, route, tracker, max_sim)
+        if continuous is not None:
+            run_continuous(continuous, wind, port, route, tracker, max_sim)
+        else:
+            run_loop(advance, state, steps_per_control, wind, port, route, tracker, max_sim)
     finally:
         port.connection.close()
 
 
-def run_loop(advance, state, steps_per_control, wind, port, route, tracker, max_sim):
+def run_loop(advance, state, steps_per_control, wind, port, route, tracker, max_sim,
+             continuous=None):
     if sys.version_info[0] == 2:
         stream = open(os.path.join(RUN, 'Test_Python.csv'), 'wb')
     else:
@@ -242,6 +314,10 @@ def run_loop(advance, state, steps_per_control, wind, port, route, tracker, max_
     sample = 0
     try:
         while not rospy.is_shutdown():
+            if continuous is not None and state.sim_time.to_sec() - start_time >= max_sim:
+                save('navigation.json', dict(outcome='simulation_timeout', samples=sample,
+                     simulation_seconds=state.sim_time.to_sec() - start_time))
+                return
             sensors = sensors_from_state(state, wind)
             sent = monotonic()
             if not port.write_data(sensors, message_type=0x01):
@@ -252,26 +328,39 @@ def run_loop(advance, state, steps_per_control, wind, port, route, tracker, max_
             target_index = tracker.update(action, sensors)
             target = route[target_index]
             elapsed = state.sim_time.to_sec() - start_time
+            response_elapsed = elapsed
+            if continuous is not None:
+                response = continuous.snapshot()
+                response_elapsed = response.sim_time.to_sec() - start_time
+                if not tracker.completed and response_elapsed < max_sim:
+                    response = continuous.apply(action)
+                    response_elapsed = response.sim_time.to_sec() - start_time
             row = dict(ID=sample, time=elapsed, x=sensors['S1'], y=sensors['S2'],
                        speed=math.hypot(sensors['S3'], sensors['S4']), pitch=sensors['S6'],
                        yaw=sensors['S7'], relative_wind=sensors['S8'],
                        waypoint_index=target_index, waypoint_x=target[0], waypoint_y=target[1],
                        waypoint_distance=math.hypot(target[0]-sensors['S1'], target[1]-sensors['S2']),
                        rudder_action=action['A1'], sail_action=action['A2'],
-                       sensor_x=sensors['S1'], sensor_y=sensors['S2'], response_sim_time=elapsed,
+                       sensor_x=sensors['S1'], sensor_y=sensors['S2'], response_sim_time=response_elapsed,
                        roundtrip_wall_seconds=received-sent, processing_wall_seconds='',
                        iteration=state.iteration)
             writer.writerow(row)
             stream.flush()
-            progress = dict(simulation_seconds=elapsed, wall_seconds=received-began,
+            progress = dict(simulation_seconds=response_elapsed, wall_seconds=received-began,
                             samples=sample, waypoint_index=target_index)
             save('progress.json', progress)
             if tracker.completed:
                 save('navigation.json', dict(progress, outcome='completed'))
                 return
-            if elapsed >= max_sim:
+            if response_elapsed >= max_sim:
                 save('navigation.json', dict(progress, outcome='simulation_timeout'))
                 return
+            if continuous is not None:
+                # One outstanding inference. A slow answer is followed by fresh
+                # sensors immediately, rather than queued samples or catch-up bursts.
+                state = continuous.wait_until(min(state.sim_time.to_sec() + 1.0,
+                                                  start_time + max_sim))
+                continue
             next_state = advance(StepRequest(sequence=sample, initialize=False, steps=steps_per_control,
                 rudder=math.radians(action['A1']), sail=math.radians(action['A2']), sail2=math.radians(action['A3'])))
             if not next_state.success:

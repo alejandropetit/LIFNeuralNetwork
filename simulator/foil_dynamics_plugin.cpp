@@ -390,8 +390,9 @@ void
 Foil_Dynamics_Plugin::OnUpdateSail ()
 {
 //gazebo::math::Angle (-this->angle)
-	this->joint->SetLowStop(0, gazebo::math::Angle (this->angle));
-        this->joint->SetHighStop(0, gazebo::math::Angle (this->angle));
+	const double sail_angle = this->angle.load();
+	this->joint->SetLowStop(0, gazebo::math::Angle (sail_angle));
+        this->joint->SetHighStop(0, gazebo::math::Angle (sail_angle));
 	//std::cerr<<this->angle<<'\n';
 	math::Vector3 aw = this->wind - this->link->GetWorldLinearVel (this->cp);
 	if (aw.GetLength () <= 0.01)

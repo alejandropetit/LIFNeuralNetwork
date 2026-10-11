@@ -4,6 +4,7 @@
 #include <ros/callback_queue.h>
 #include <snn_lockstep/Step.h>
 #include <snn_lockstep/SetSail.h>
+#include <snn_lockstep/Continuous.h>
 #include <freefloating_gazebo/freefloating_pids_joint.h>
 #include <atomic>
 #include <cmath>
@@ -18,6 +19,7 @@ class SnnStepPlugin : public ModelPlugin {
   std::unique_ptr<ros::NodeHandle> node_;
   ros::CallbackQueue queue_;
   ros::ServiceServer service_;
+  ros::ServiceServer continuous_service_;
   std::thread worker_;
   std::atomic<bool> running_{false};
   event::ConnectionPtr update_;
@@ -26,6 +28,8 @@ class SnnStepPlugin : public ModelPlugin {
   std::vector<physics::JointPtr> joints_;
   sensor_msgs::JointState measure_, effort_;
   bool initialized_ = false;
+  bool continuous_ = false;
+  snn_lockstep::Continuous::Response latest_;
   uint64_t steps_ = 0, sequence_ = 0;
   unsigned int pid_stride_ = 0;
   double step_size_ = 0;
@@ -90,11 +94,15 @@ class SnnStepPlugin : public ModelPlugin {
         if (!std::isfinite(effort_.effort[i])) throw std::runtime_error("Non-finite PID effort");
         joints_[i]->SetForce(0, effort_.effort[i]);
       }
+      // Cache a coherent state on the physics thread. Service callbacks must
+      // not read the model while Gazebo is integrating it on another thread.
+      if (continuous_) Snapshot(latest_);
       ++steps_;
     } catch (const std::exception &error) { update_error_ = error.what(); }
   }
 
-  void Snapshot(snn_lockstep::Step::Response &response) {
+  template <typename Response>
+  void Snapshot(Response &response) {
     auto pose = model_->GetWorldPose();
     response.pose.position.x = pose.pos.x;
     response.pose.position.y = pose.pos.y;
@@ -117,6 +125,8 @@ class SnnStepPlugin : public ModelPlugin {
     response.iteration = steps_;
     response.step_size = step_size_;
     response.joints.name = measure_.name;
+    response.joints.position.clear();
+    response.joints.velocity.clear();
     for (auto &joint : joints_) {
       response.joints.position.push_back(joint->GetAngle(0).Radian());
       response.joints.velocity.push_back(joint->GetVelocity(0));
@@ -125,6 +135,7 @@ class SnnStepPlugin : public ModelPlugin {
 
   bool Step(snn_lockstep::Step::Request &request, snn_lockstep::Step::Response &response) {
     try {
+      if (continuous_) throw std::runtime_error("Restart Gazebo to return to lockstep");
       if (!world_->IsPaused()) throw std::runtime_error("World must remain paused");
       if (request.initialize) {
         std::lock_guard<std::mutex> guard(mutex_);
@@ -168,6 +179,72 @@ class SnnStepPlugin : public ModelPlugin {
     return true;
   }
 
+  bool Continuous(snn_lockstep::Continuous::Request &request,
+                  snn_lockstep::Continuous::Response &response) {
+    typedef snn_lockstep::Continuous::Request Command;
+    try {
+      // Never hold mutex_ while changing pause state: the physics callback
+      // uses that mutex too. STOP also works after an interrupted START.
+      if (request.command == Command::STOP) {
+        world_->SetPaused(true);
+        std::lock_guard<std::mutex> guard(mutex_);
+        response = latest_;
+        response.success = true;
+        return true;
+      }
+      if (request.command == Command::SNAPSHOT) {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (!continuous_) throw std::runtime_error("Continuous mode has not started");
+        if (!update_error_.empty()) throw std::runtime_error(update_error_);
+        response = latest_;
+        response.success = true;
+        return true;
+      }
+      const bool start = request.command == Command::START;
+      if (!start && request.command != Command::APPLY)
+        throw std::runtime_error("Unknown continuous command");
+      {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (!initialized_ || !update_error_.empty())
+          throw std::runtime_error("PID unavailable: " + update_error_);
+        if (start ? (continuous_ || steps_ != 0 || !world_->IsPaused()) : !continuous_)
+          throw std::runtime_error("Invalid continuous lifecycle; restart Gazebo");
+        if (request.sequence != sequence_ + 1)
+          throw std::runtime_error("Invalid action sequence; requests must not be retried");
+        for (double angle : {request.rudder, request.sail, request.sail2})
+          if (!std::isfinite(angle) || std::abs(angle) > M_PI)
+            throw std::runtime_error("Invalid action angle");
+      }
+      for (const auto &joint : {"sail_joint", "sail_joint_2"}) {
+        snn_lockstep::SetSail sail;
+        sail.request.angle = request.sail;
+        auto client = node_->serviceClient<snn_lockstep::SetSail>(std::string("/snn_step/") + joint);
+        if (!client.call(sail) || !sail.response.success)
+          throw std::runtime_error("Sail did not acknowledge the action");
+      }
+      {
+        std::lock_guard<std::mutex> guard(mutex_);
+        sensor_msgs::JointState setpoint;
+        setpoint.name = {"rudder_joint", "sail_joint", "sail_joint_2"};
+        setpoint.position = {request.rudder, request.sail, request.sail2};
+        pid_.SetpointCallBack(boost::make_shared<sensor_msgs::JointState>(setpoint));
+        sequence_ = request.sequence;
+        if (start) {
+          Snapshot(latest_); // Still paused, before the very first physics tick.
+          continuous_ = true;
+        }
+        response = latest_;
+        response.sequence = sequence_; // Action acknowledgement, no physics wait.
+        response.success = true;
+      }
+      if (start) world_->SetPaused(false);
+    } catch (const std::exception &error) {
+      response.success = false;
+      response.status_message = error.what();
+    }
+    return true;
+  }
+
 public:
   void Load(physics::ModelPtr model, sdf::ElementPtr) override {
     model_ = model;
@@ -175,6 +252,7 @@ public:
     node_.reset(new ros::NodeHandle("/snn_step"));
     node_->setCallbackQueue(&queue_);
     service_ = node_->advertiseService("advance", &SnnStepPlugin::Step, this);
+    continuous_service_ = node_->advertiseService("continuous", &SnnStepPlugin::Continuous, this);
     update_ = event::Events::ConnectWorldUpdateBegin(boost::bind(&SnnStepPlugin::Update, this));
     running_ = true;
     worker_ = std::thread([this] {

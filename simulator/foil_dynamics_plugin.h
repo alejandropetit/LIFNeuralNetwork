@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 #include <thread>
+#include <atomic>
 
 #include <gazebo/gazebo.hh>
 #include <gazebo/common/Plugin.hh>
@@ -125,11 +126,12 @@ namespace gazebo
     public: ros::ServiceServer step_sail_service;
     public: bool SetStepSail(snn_lockstep::SetSail::Request &req,
                             snn_lockstep::SetSail::Response &res) {
-        res.success = this->world->IsPaused() && std::isfinite(req.angle);
+        res.success = std::isfinite(req.angle);
         if (res.success) this->angle = req.angle;
         return true;
     }    
-    public: double angle = 0.0;
+    // Service callbacks and the physics thread access this concurrently.
+    public: std::atomic<double> angle{0.0};
     public: ros::Subscriber  angleLimits_subscriber;
     public: void ropeSimulator(const std_msgs::Float64::ConstPtr& _angle){
         this->angle = _angle->data;

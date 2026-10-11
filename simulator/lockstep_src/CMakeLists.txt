@@ -4,7 +4,7 @@ add_compile_options(-std=c++11)
 find_package(catkin REQUIRED COMPONENTS roscpp geometry_msgs sensor_msgs std_srvs
   control_toolbox gazebo_ros wind_current water_current message_generation)
 find_package(gazebo REQUIRED)
-add_service_files(FILES Step.srv SetSail.srv)
+add_service_files(FILES Step.srv SetSail.srv Continuous.srv)
 generate_messages(DEPENDENCIES geometry_msgs sensor_msgs)
 catkin_package(CATKIN_DEPENDS message_runtime roscpp geometry_msgs sensor_msgs)
 include_directories(${catkin_INCLUDE_DIRS} ${GAZEBO_INCLUDE_DIRS} vendor/include)
