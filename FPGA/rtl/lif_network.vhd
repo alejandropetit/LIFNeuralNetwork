@@ -28,7 +28,7 @@ architecture Behavioral of lif_network is
 
      constant NUM_LAYERS      : positive := network_shape'length - 1;
      signal weights_done      : STD_LOGIC;
-     signal valid_reg         : STD_LOGIC_VECTOR(NUM_LAYERS - 1 downto 0);
+     signal valid_reg         : STD_LOGIC;
      signal weight_accum_done : STD_LOGIC_VECTOR(NUM_LAYERS - 1 downto 0);
      signal output_state      : STD_LOGIC_VECTOR(NUM_LAYERS - 1 downto 0);
      signal en_front          : STD_LOGIC;

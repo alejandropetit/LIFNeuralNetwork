@@ -35,6 +35,8 @@ architecture Behavioral of datapath_layer is
     constant num_groups      : integer :=  (num_neurons + neurons_per_mem -1)/neurons_per_mem;
     signal   mem_addr        : STD_LOGIC_VECTOR(clog2(in_size)-1 downto 0);--cambio
     signal   decay_sig       : SFIXED(int_width-1 downto -frac_width);
+    signal   layer_out_aux   : STD_LOGIC_VECTOR (num_neurons-1 downto 0);
+    signal   output_valid_d  : STD_LOGIC;
 begin
 
     mem_addr <= std_logic_vector(resize(unsigned(weight_addr), mem_addr'length));         
@@ -84,7 +86,7 @@ begin
                     current_spike => current_spike,
                     weight        => weight(width*(i+1)-1 downto width*i),
                     spike_in      => layer_in,
-                    spike_out     => layer_out(neuron_idx),
+                    spike_out     => layer_out_aux(neuron_idx),
                     decay_sig     => decay_sig
                 );                  
             end generate;
@@ -116,5 +118,28 @@ begin
             decay_sig <= beta_sig when former_spike='1' else accumulate_sig;  
         end process;    
     end generate;
+    
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if reset = '1' then
+                output_valid_d <= '0';
+                layer_out <= (others => '0');
+            else
+                -- Mark a valid neuron update.
+                output_valid_d <= '0';
+
+                if state = OUTPUT and valid = '1' then
+                    output_valid_d <= '1';
+                end if;
+
+                -- Capture the spike one clock cycle later.
+                if output_valid_d = '1' then
+                    layer_out <= layer_out_aux;
+                end if;
+            end if;
+        end if;
+    end process;
+    
         
 end Behavioral;
