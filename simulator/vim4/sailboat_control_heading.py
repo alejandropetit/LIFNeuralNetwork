@@ -1,0 +1,402 @@
+#!/usr/bin/python
+from __future__ import print_function
+import csv
+import ctypes
+import datetime
+import json
+import math
+import os
+import sys
+import time
+import struct
+
+import rospy
+from tf.transformations import euler_from_quaternion
+from snn_lockstep.srv import Step, StepRequest
+
+# vim4_install.sh installs this file and the existing float32 transport together.
+import communicate_virtual as cm
+
+RUN = None
+NETWORK = '/home/nelson/Documentos/Ubuntu_master/SNN_Codes/Spiking_codes'
+DEFAULT_ROUTE = '/home/nelson/Documentos/Ubuntu_master/routes/route.json'
+
+
+class Timespec(ctypes.Structure):
+    _fields_ = [('seconds', ctypes.c_long), ('nanoseconds', ctypes.c_long)]
+
+
+clock_gettime = (None if hasattr(time, 'monotonic') else
+                 ctypes.CDLL('librt.so.1', use_errno=True).clock_gettime)
+
+
+def monotonic():
+    if hasattr(time, 'monotonic'):
+        return time.monotonic()
+    value = Timespec()
+    if clock_gettime(1, ctypes.byref(value)):
+        raise OSError(ctypes.get_errno(), 'clock_gettime failed')
+    return value.seconds + value.nanoseconds * 1e-9
+
+
+def save(name, data):
+    if RUN is None:
+        return
+    path = os.path.join(RUN, name)
+    with open(path + '.tmp', 'w') as stream:
+        json.dump(data, stream)
+    getattr(os, 'replace', os.rename)(path + '.tmp', path)
+
+
+def load_route(path):
+    with open(path, 'r') as stream:
+        route = json.load(stream)
+    if not isinstance(route, list) or len(route) < 2:
+        raise ValueError('route.json must contain at least two [x, y, type] points')
+    for point in route:
+        if not isinstance(point, list) or len(point) != 3:
+            raise ValueError('Each route point must be [x, y, type]')
+        for value in point:
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or math.isnan(value) or math.isinf(value)):
+                raise ValueError('Route coordinates and types must be finite numbers')
+    return route
+    
+def initialize_from_route(route, yaw_deg=0.0):
+    initial_x = float(route[0][0])
+    initial_y = float(route[0][1])
+    initial_yaw = math.radians(float(yaw_deg))
+
+    for value in (initial_x, initial_y, initial_yaw):
+        if math.isnan(value) or math.isinf(value):
+            raise ValueError('Initial pose must contain finite values')
+
+    rospy.wait_for_service('/snn_step/advance', timeout=150)
+
+    for name in ('sail_joint', 'sail_joint_2'):
+        rospy.wait_for_service('/snn_step/' + name, timeout=150)
+
+    # Plugins load concurrently. Wait for the joint PID configuration.
+    deadline = time.time() + 150.0
+    while True:
+        if rospy.is_shutdown():
+            raise RuntimeError('Initialization interrupted')
+
+        config = rospy.get_param('/sailboat/controllers/config/joints', {})
+        names = config.get('name', [])
+
+        if (2 <= len(names) <= 3 and
+                all(len(config.get(key, [])) == len(names)
+                    for key in ('lower', 'upper', 'velocity'))):
+            break
+
+        if time.time() > deadline:
+            raise RuntimeError('Joint PID initialization did not complete')
+
+        # Sleep in wall time: the simulation clock remains at zero.
+        time.sleep(0.02)
+
+    advance = rospy.ServiceProxy('/snn_step/advance', Step)
+
+    state = advance(StepRequest(
+        sequence=0,
+        initialize=True,
+        steps=0,
+        initial_x=initial_x,
+        initial_y=initial_y,
+        initial_yaw=initial_yaw
+    ))
+
+    if not state.success:
+        raise RuntimeError(state.status_message)
+
+    if (state.sequence != 0 or state.iteration != 0 or
+            state.sim_time.to_sec() != 0.0):
+        raise RuntimeError('Trial did not start at time zero and iteration zero')
+
+    if math.hypot(state.pose.position.x - initial_x,
+                  state.pose.position.y - initial_y) > 1e-6:
+        raise RuntimeError('Initial position does not match the route')
+
+    return advance, state
+
+def read_action(port, first_sample):
+    success, action = port.read_data()
+    # The original test_SNN sends a startup reset before answering sensors.
+    # Consume it once; do not resend sensors or advance physics for this message.
+    if success and action.get('A4') == 1000 and first_sample:
+        success, action = port.read_data()
+    if not success:
+        raise RuntimeError('Cannot receive the SNN action')
+    if not all(key in action for key in ('A1', 'A2', 'A3', 'A4')):
+        raise RuntimeError('Invalid SNN action message')
+    if any(math.isnan(v) or math.isinf(v) for v in action.values()):
+        raise RuntimeError('Non-finite SNN action')
+    if action['A4'] not in (0, 1, 3, -1):
+        raise RuntimeError('Unexpected SNN status/reset: ' + str(action['A4']))
+    return action
+
+
+class RouteProgress(object):
+    def __init__(self, route):
+        self.route = route
+        self.target_index = 1  # First point is the start, not a target.
+        self.completed = False
+
+    def update(self, action, sensors):
+        if self.completed:
+            raise RuntimeError('Received an action after route completion')
+        target_index = self.target_index
+        target = self.route[target_index]
+        x = struct.unpack('<f', struct.pack('<f', sensors['S1']))[0]
+        y = struct.unpack('<f', struct.pack('<f', sensors['S2']))[0]
+        distance = math.hypot(target[0] - x, target[1] - y)
+        if action['A4'] in (1, -1):
+            if distance > 2.0 + 1e-9:
+                raise RuntimeError('SNN arrival disagrees with route.json; check both routes')
+            last = target_index == len(self.route) - 1
+            if action['A4'] == -1 and not last:
+                raise RuntimeError('SNN ended before the last route.json target')
+            self.completed = last
+            if not last:
+                self.target_index += 1
+        return target_index
+
+
+def angle_saturation(value):
+    if value > 180:
+        value -= 360
+    if value < -180:
+        value += 360
+    return value
+
+
+def sensors_from_state(state, wind_direction):
+    q = state.pose.orientation
+    roll, pitch, yaw = euler_from_quaternion((q.x, q.y, q.z, q.w))
+    heading = -angle_saturation(math.degrees(yaw))
+    relative_wind = angle_saturation(math.degrees(wind_direction) + heading)
+    return {'S1': state.pose.position.x, 'S2': state.pose.position.y,
+            'S3': state.twist.linear.x, 'S4': state.twist.linear.y,
+            'S5': math.degrees(roll), 'S6': math.degrees(pitch),
+            'S7': -heading, 'S8': relative_wind}
+
+
+def simulation_mode():
+    mode = os.environ.get('SNN_SIM_MODE', 'lockstep').strip().lower()
+    if mode not in ('lockstep', 'continuous'):
+        raise ValueError('SNN_SIM_MODE must be lockstep or continuous')
+    return mode
+
+
+class ContinuousControl(object):
+    def __init__(self, service, request_type):
+        self.service = service
+        self.request_type = request_type
+        self.sequence = 0
+
+    def call(self, command, action=None):
+        request = self.request_type(command=command)
+        if action is not None:
+            request.sequence = self.sequence + 1
+            request.rudder = math.radians(action['A1'])
+            request.sail = math.radians(action['A2'])
+            request.sail2 = math.radians(action['A3'])
+        result = self.service(request)
+        if not result.success:
+            raise RuntimeError(result.status_message)
+        if action is not None:
+            if result.sequence != request.sequence:
+                raise RuntimeError('Continuous action sequence mismatch')
+            self.sequence = request.sequence
+        return result
+
+    def start(self):
+        return self.call(self.request_type.START, dict(A1=0, A2=0, A3=0))
+
+    def snapshot(self):
+        return self.call(self.request_type.SNAPSHOT)
+
+    def apply(self, action):
+        return self.call(self.request_type.APPLY, action)
+
+    def stop(self):
+        return self.call(self.request_type.STOP)
+
+    def wait_until(self, target):
+        # Only the bridge waits for the next sample; Gazebo remains unpaused.
+        state = self.snapshot()
+        while state.sim_time.to_sec() < target and not rospy.is_shutdown():
+            time.sleep(0.01)
+            state = self.snapshot()
+        return state
+
+
+def run_continuous(control, wind, port, route, tracker, max_sim):
+    try:
+        state = control.start()
+        run_loop(None, state, None, wind, port, route, tracker, max_sim,
+                 continuous=control)
+    finally:
+        control.stop()  # Includes serial failures, completion and Ctrl+C.
+
+
+def open_uart(timeout):
+    import fcntl
+    path = os.environ.get('SNN_SERIAL_PORT', '/dev/ttyUSB0')
+    baudrate = int(os.environ.get('SNN_BAUD', '9600'))
+    if not path.startswith('/dev/') or baudrate <= 0:
+        raise ValueError('Set SNN_SERIAL_PORT to a UART under /dev and SNN_BAUD > 0')
+    port = cm.SerialManager()
+    route, device = os.path.split(path)
+    if not port.initialize(route, device, timeout=timeout, baudrate=baudrate):
+        raise RuntimeError('Cannot open VIM4 serial port: ' + path)
+    try:
+        fcntl.flock(port.connection.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        port.connection.write_timeout = timeout
+        port.connection.reset_input_buffer()
+        port.connection.reset_output_buffer()
+    except Exception:
+        port.connection.close()
+        raise
+    return port
+
+
+def main():
+    global RUN
+    mode = simulation_mode()
+    rospy.init_node('heading_control', anonymous=False)
+    route_path = os.path.abspath(os.path.expanduser(
+        os.environ.get('SNN_ROUTE_FILE', DEFAULT_ROUTE)))
+    route = load_route(route_path)
+    tracker = RouteProgress(route)
+    output_default = os.path.join(os.path.dirname(os.path.dirname(NETWORK)),
+        'results', mode, datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        + '_' + str(os.getpid()))
+    RUN = os.path.abspath(os.path.expanduser(os.environ.get('SNN_RUN_DIR', output_default)))
+    if not os.path.isdir(RUN):
+        os.makedirs(RUN)
+    max_sim = float(os.environ.get('SNN_MAX_SIM', '3600'))
+    if math.isnan(max_sim) or math.isinf(max_sim) or max_sim <= 0:
+        raise ValueError('SNN_MAX_SIM must be positive and finite')
+    serial_timeout = float(os.environ.get('SNN_SERIAL_TIMEOUT', '150'))
+    if math.isnan(serial_timeout) or math.isinf(serial_timeout) or serial_timeout <= 0:
+        raise ValueError('SNN_SERIAL_TIMEOUT must be positive and finite')
+    save('route_used.json', route)
+    save('configuration.json', dict(simulation_mode=mode, control_period=1.0))
+    rospy.loginfo('Simulation mode: %s; route: %s; results: %s', mode, route_path, RUN)
+
+    advance, state = initialize_from_route(route, yaw_deg=0.0)
+
+    continuous = None
+    if mode == 'continuous':
+        # Lazy import keeps lockstep usable with an older compiled service package.
+        from snn_lockstep.srv import Continuous, ContinuousRequest
+        rospy.wait_for_service('/snn_step/continuous', timeout=150)
+        continuous = ContinuousControl(
+            rospy.ServiceProxy('/snn_step/continuous', Continuous), ContinuousRequest)
+
+    steps_per_control = int(round(1.0 / state.step_size))
+    if steps_per_control <= 0 or abs(steps_per_control * state.step_size - 1.0) > 1e-9:
+        raise RuntimeError('Physics step must divide the 1 Hz SNN period')
+
+    wind = math.atan2(rospy.get_param('/uwsim/wind/y'),rospy.get_param('/uwsim/wind/x'))
+    port = open_uart(serial_timeout)
+
+    try:
+        save('configuration.json', dict(simulation_mode=mode, control_period=1.0,
+             serial_port=port.connection.port, baudrate=port.connection.baudrate,
+             backend='vim4_ssh_uart', seed=int(os.environ.get('SNN_SEED', '1000'))))
+        save('started.json', dict(ready=True))
+        if continuous is not None:
+            run_continuous(continuous, wind, port, route, tracker, max_sim)
+        else:
+            run_loop(advance, state, steps_per_control, wind, port, route, tracker, max_sim)
+    finally:
+        port.connection.close()
+
+
+def run_loop(advance, state, steps_per_control, wind, port, route, tracker, max_sim,
+             continuous=None):
+    if sys.version_info[0] == 2:
+        stream = open(os.path.join(RUN, 'Test_Python.csv'), 'wb')
+    else:
+        stream = open(os.path.join(RUN, 'Test_Python.csv'), 'w', newline='')
+    columns = ['ID', 'time', 'x', 'y', 'speed', 'pitch', 'yaw', 'relative_wind',
+               'waypoint_index', 'waypoint_x', 'waypoint_y', 'waypoint_distance',
+               'rudder_action', 'sail_action', 'sensor_x', 'sensor_y',
+               'response_sim_time', 'roundtrip_wall_seconds', 'processing_wall_seconds', 'iteration']
+    writer = csv.DictWriter(stream, columns)
+    writer.writeheader()
+    began = monotonic()
+    start_time = state.sim_time.to_sec()
+    sample = 0
+    try:
+        while not rospy.is_shutdown():
+            if continuous is not None and state.sim_time.to_sec() - start_time >= max_sim:
+                save('navigation.json', dict(outcome='simulation_timeout', samples=sample,
+                     simulation_seconds=state.sim_time.to_sec() - start_time))
+                return
+            sensors = sensors_from_state(state, wind)
+            sent = monotonic()
+            if not port.write_data(sensors, message_type=0x01):
+                raise RuntimeError('Cannot send sensors to the SNN')
+            action = read_action(port, first_sample=(sample == 0))
+            received = monotonic()
+            sample += 1
+            target_index = tracker.update(action, sensors)
+            target = route[target_index]
+            elapsed = state.sim_time.to_sec() - start_time
+            response_elapsed = elapsed
+            if continuous is not None:
+                response = continuous.snapshot()
+                response_elapsed = response.sim_time.to_sec() - start_time
+                if not tracker.completed and response_elapsed < max_sim:
+                    response = continuous.apply(action)
+                    response_elapsed = response.sim_time.to_sec() - start_time
+            row = dict(ID=sample, time=elapsed, x=sensors['S1'], y=sensors['S2'],
+                       speed=math.hypot(sensors['S3'], sensors['S4']), pitch=sensors['S6'],
+                       yaw=sensors['S7'], relative_wind=sensors['S8'],
+                       waypoint_index=target_index, waypoint_x=target[0], waypoint_y=target[1],
+                       waypoint_distance=math.hypot(target[0]-sensors['S1'], target[1]-sensors['S2']),
+                       rudder_action=action['A1'], sail_action=action['A2'],
+                       sensor_x=sensors['S1'], sensor_y=sensors['S2'], response_sim_time=response_elapsed,
+                       roundtrip_wall_seconds=received-sent, processing_wall_seconds='',
+                       iteration=state.iteration)
+            writer.writerow(row)
+            stream.flush()
+            progress = dict(simulation_seconds=response_elapsed, wall_seconds=received-began,
+                            samples=sample, waypoint_index=target_index)
+            save('progress.json', progress)
+            if tracker.completed:
+                save('navigation.json', dict(progress, outcome='completed'))
+                return
+            if response_elapsed >= max_sim:
+                save('navigation.json', dict(progress, outcome='simulation_timeout'))
+                return
+            if continuous is not None:
+                # One outstanding inference. A slow answer is followed by fresh
+                # sensors immediately, rather than queued samples or catch-up bursts.
+                state = continuous.wait_until(min(state.sim_time.to_sec() + 1.0,
+                                                  start_time + max_sim))
+                continue
+            next_state = advance(StepRequest(sequence=sample, initialize=False, steps=steps_per_control,
+                rudder=math.radians(action['A1']), sail=math.radians(action['A2']), sail2=math.radians(action['A3'])))
+            if not next_state.success:
+                raise RuntimeError(next_state.status_message)
+            if next_state.sequence != sample or next_state.iteration != state.iteration + steps_per_control:
+                raise RuntimeError('Physics step sequence mismatch')
+            if abs(next_state.sim_time.to_sec() - state.sim_time.to_sec() - 1.0) > 1e-8:
+                raise RuntimeError('Unexpected simulated time increment')
+            state = next_state
+        save('navigation.json', {'outcome': 'interrupted', 'samples': sample})
+    finally:
+        stream.close()
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except Exception as exc:
+        save('navigation.json', {'outcome': 'failed', 'error': str(exc)})
+        raise
