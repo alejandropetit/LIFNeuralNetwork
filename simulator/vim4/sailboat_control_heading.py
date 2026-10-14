@@ -232,11 +232,11 @@ class ContinuousControl(object):
         return state
 
 
-def run_continuous(control, wind, port, route, tracker, max_sim):
+def run_continuous(control, wind, port, route, tracker, max_sim, measurement=None):
     try:
         state = control.start()
         run_loop(None, state, None, wind, port, route, tracker, max_sim,
-                 continuous=control)
+                 continuous=control, measurement=measurement)
     finally:
         control.stop()  # Includes serial failures, completion and Ctrl+C.
 
@@ -260,6 +260,43 @@ def open_uart(timeout):
         port.connection.close()
         raise
     return port
+
+
+class PowerMeasurement(object):
+    """Optional markers for the whole navigation window, in real elapsed time."""
+    def __init__(self):
+        self.path = os.environ.get('SNN_POWER_MARKERS_FILE')
+        self.events = []
+        self.started = None
+
+    def mark(self, event, sim_time):
+        if not self.path:
+            return
+        now = monotonic()
+        if event == 'START':
+            self.started = now
+        if event == 'END' and self.started is None:
+            raise RuntimeError('Measurement END without START')
+        self.events.append(dict(event=event, unix_time=time.time(), simulation_seconds=sim_time,
+            elapsed_real_seconds=None if self.started is None else now - self.started))
+        with open(self.path + '.tmp', 'w') as stream:
+            json.dump(self.events, stream)
+        os.rename(self.path + '.tmp', self.path)
+        rospy.loginfo('POWER_MEASUREMENT %s sim=%s', event, sim_time)
+
+    def begin(self):
+        if not self.path:
+            return
+        delay = float(os.environ.get('SNN_POWER_LEAD_SECONDS', '10'))
+        if math.isnan(delay) or math.isinf(delay) or not 0 <= delay <= 600:
+            raise ValueError('Measurement lead must be between 0 and 600 seconds')
+        self.mark('READY', 0.0)
+        deadline = monotonic() + delay
+        while monotonic() < deadline:
+            if rospy.is_shutdown():
+                raise RuntimeError('Measurement interrupted before START')
+            time.sleep(min(0.1, max(0, deadline - monotonic())))
+        self.mark('START', 0.0)
 
 
 def main():
@@ -302,22 +339,30 @@ def main():
 
     wind = math.atan2(rospy.get_param('/uwsim/wind/y'),rospy.get_param('/uwsim/wind/x'))
     port = open_uart(serial_timeout)
+    measurement = PowerMeasurement()
 
     try:
         save('configuration.json', dict(simulation_mode=mode, control_period=1.0,
              serial_port=port.connection.port, baudrate=port.connection.baudrate,
              backend='vim4_ssh_uart', seed=int(os.environ.get('SNN_SEED', '1000'))))
+        # Gazebo is still paused at zero, including when continuous is selected.
+        measurement.begin()
         save('started.json', dict(ready=True))
         if continuous is not None:
-            run_continuous(continuous, wind, port, route, tracker, max_sim)
+            run_continuous(continuous, wind, port, route, tracker, max_sim, measurement=measurement)
         else:
-            run_loop(advance, state, steps_per_control, wind, port, route, tracker, max_sim)
+            run_loop(advance, state, steps_per_control, wind, port, route, tracker, max_sim,
+                     measurement=measurement)
     finally:
-        port.connection.close()
+        try:
+            if measurement.path and measurement.events and measurement.events[-1]['event'] != 'END':
+                measurement.mark('ABORT', None)
+        finally:
+            port.connection.close()
 
 
 def run_loop(advance, state, steps_per_control, wind, port, route, tracker, max_sim,
-             continuous=None):
+             continuous=None, measurement=None):
     if sys.version_info[0] == 2:
         stream = open(os.path.join(RUN, 'Test_Python.csv'), 'wb')
     else:
@@ -369,6 +414,8 @@ def run_loop(advance, state, steps_per_control, wind, port, route, tracker, max_
                             samples=sample, waypoint_index=target_index)
             save('progress.json', progress)
             if tracker.completed:
+                if measurement is not None:
+                    measurement.mark('END', response_elapsed)
                 save('navigation.json', dict(progress, outcome='completed'))
                 return
             if response_elapsed >= max_sim:
